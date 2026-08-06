@@ -6,12 +6,12 @@
 
 ## Results
 
-| # | Source | Status | Consistency | Latency | Verdict |
-|---|---|---|---|---|---|
-| a | `nseindia.com/api/quote-equity?symbol=RELIANCE` | **403** | 22/22 runs | 22–85 ms | **Unavailable** |
-| b | `nseindia.com/api/corporate-announcements?index=equities` | **200** | 22/22 runs | 180–200 ms | **Usable** |
-| d | `nseindia.com/api/marketStatus` | **200** | 12/12 runs | 25–135 ms | **Usable** |
-| c | `query1.finance.yahoo.com/v8/finance/chart/RELIANCE.NS` | **200** | 22/22 runs | 60–70 ms | **Usable** |
+| #   | Source                                                    | Status  | Consistency | Latency    | Verdict         |
+| --- | --------------------------------------------------------- | ------- | ----------- | ---------- | --------------- |
+| a   | `nseindia.com/api/quote-equity?symbol=RELIANCE`           | **403** | 22/22 runs  | 22–85 ms   | **Unavailable** |
+| b   | `nseindia.com/api/corporate-announcements?index=equities` | **200** | 22/22 runs  | 180–200 ms | **Usable**      |
+| d   | `nseindia.com/api/marketStatus`                           | **200** | 12/12 runs  | 25–135 ms  | **Usable**      |
+| c   | `query1.finance.yahoo.com/v8/finance/chart/RELIANCE.NS`   | **200** | 22/22 runs  | 60–70 ms   | **Usable**      |
 
 `d` was not in the original brief. It was added after `a` failed, because it is the endpoint the existing `get_market_status` tool actually needs.
 
@@ -28,11 +28,11 @@ The warm-up (`GET https://www.nseindia.com/` with navigation headers, reusing `S
 
 `quote-equity` returns an Akamai `Access Denied` HTML page, not JSON. The natural theory is that Cloudflare's egress IPs are blocked. That theory is wrong — I tested the same endpoints from a residential IP:
 
-| Endpoint | From Worker (MRS) | From residential IP |
-|---|---|---|
-| `/api/quote-equity` | 403 | **403** |
-| `/api/marketStatus` | 200 | 200 |
-| `/api/corporate-announcements` | 200 | 200 |
+| Endpoint                       | From Worker (MRS) | From residential IP |
+| ------------------------------ | ----------------- | ------------------- |
+| `/api/quote-equity`            | 403               | **403**             |
+| `/api/marketStatus`            | 200               | 200                 |
+| `/api/corporate-announcements` | 200               | 200                 |
 
 The gating is **per-endpoint, not per-client**. `quote-equity` sits behind a stricter Akamai policy than its siblings under the same `/api/` prefix. Moving the Worker, changing egress, or retrying from elsewhere will not fix it; only a full browser session would, which is outside the rules of this spike.
 
@@ -45,9 +45,20 @@ This is a useful negative result: it closes off a line of debugging that would o
 Returns per-segment state directly:
 
 ```json
-{"marketState":[{"market":"Capital Market","marketStatus":"Closed",
-  "tradeDate":"06-Aug-2026 15:30","index":"NIFTY 50","last":24636,
-  "variation":11.35,"percentChange":0.05,"marketStatusMessage":"..."}]}
+{
+  "marketState": [
+    {
+      "market": "Capital Market",
+      "marketStatus": "Closed",
+      "tradeDate": "06-Aug-2026 15:30",
+      "index": "NIFTY 50",
+      "last": 24636,
+      "variation": 11.35,
+      "percentChange": 0.05,
+      "marketStatusMessage": "..."
+    }
+  ]
+}
 ```
 
 This is authoritative, covers multiple segments, and needs no header tricks. It replaces the hardcoded stub in `get_market_status` as-is.
@@ -81,6 +92,20 @@ Same endpoint; `meta.validRanges` and `dataGranularity` advertise what is suppor
 - **One transient empty response** in ~39 requests (not reproduced in 22 subsequent runs). Budget for retries.
 - **Geographic caveat:** every run was served from colo **MRS (Marseille)** — Cloudflare's choice, not selectable. NSE responses may differ from an Indian colo. The residential-IP cross-check above partly offsets this for `a`, but `b`/`d` latency in particular could vary.
 - **Deploy propagation is not instant.** Three requests immediately after a deploy hit the previous version. Allow ~30s before trusting post-deploy probes.
+
+## Forward note — Project 2 (filings RAG) ingestion
+
+The corporate-announcements endpoint doubles as the RAG's document-discovery
+feed: each record carries `attchmntFile` (PDF on `nsearchives.nseindia.com`),
+`desc`, `an_dt`, `symbol`, and `sm_isin`. Filtering `desc`/`attchmntText` for
+transcript and annual-report announcements gives the nightly "what's new"
+check (RAG burst 18) without scraping any listing pages.
+
+Untested here: (1) whether `nsearchives.nseindia.com` PDF downloads succeed,
+and from where — RAG ingestion runs from local/GitHub Actions, not the
+Worker, so probe from there; (2) pagination/date-range params on the
+announcements endpoint beyond the default 20 records. Both are Project 2
+burst 2 items.
 
 ## Cleanup
 
