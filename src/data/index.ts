@@ -9,8 +9,32 @@ export {
 } from "./http";
 
 export {
+	cacheKey,
+	kvCache,
+	quoteTtlSeconds,
+	STALE_RETENTION_SECONDS,
+	statusTtlSeconds,
+	TTL_DEFAULT_SECONDS,
+	TTL_MARKET_HOURS_SECONDS,
+	withCache,
+	type Cached,
+	type CacheMeta,
+	type CacheStore,
+} from "./cache";
+
+export {
+	IST_OFFSET_MINUTES,
+	isMarketHours,
+	istParts,
+	MARKET_CLOSE_MINUTES,
+	MARKET_OPEN_MINUTES,
+	secondsUntilNextBoundary,
+} from "./market-hours";
+
+export {
 	epochSecondsToIso,
 	fetchChart,
+	fetchQuote,
 	getQuote,
 	mapQuote,
 	normalizeSymbol,
@@ -22,6 +46,8 @@ export {
 } from "./quotes";
 
 export {
+	fetchIndex,
+	fetchIndices,
 	getIndex,
 	getIndices,
 	INDEX_KEYS,
@@ -29,19 +55,23 @@ export {
 	type IndexFailure,
 	type IndexKey,
 	type IndexQuote,
+	type IndicesResult,
 } from "./indices";
 
 export {
+	fetchAnnouncements,
 	getAnnouncements,
 	mapAnnouncement,
 	mapAnnouncements,
 	NSE_ANNOUNCEMENTS_URL,
 	parseAnnouncementDate,
 	type Announcement,
+	type AnnouncementsResult,
 	type RawAnnouncement,
 } from "./announcements";
 
 export {
+	fetchMarketStatus,
 	getMarketStatus,
 	HEADLINE_SEGMENT,
 	mapMarketSegment,

@@ -60,7 +60,7 @@ describe("getIndices", () => {
 
 	it("returns both indices when both sources answer", async () => {
 		stubYahoo();
-		const { indices, errors } = await getIndices();
+		const { indices, errors } = await getIndices(null);
 		expect(errors).toEqual([]);
 		expect(indices.map((i) => i.key)).toEqual(["NIFTY_50", "NIFTY_BANK"]);
 		expect(indices[0].label).toBe("NIFTY 50");
@@ -69,7 +69,7 @@ describe("getIndices", () => {
 
 	it("returns the surviving index when the other fails", async () => {
 		stubYahoo("^NSEBANK");
-		const { indices, errors } = await getIndices();
+		const { indices, errors } = await getIndices(null);
 		expect(indices.map((i) => i.key)).toEqual(["NIFTY_50"]);
 		expect(errors).toHaveLength(1);
 		expect(errors[0]).toMatchObject({ key: "NIFTY_BANK", code: "SOURCE_UNAVAILABLE" });
@@ -77,7 +77,7 @@ describe("getIndices", () => {
 
 	it("reports NOT_FOUND distinctly from an outage", async () => {
 		stubYahoo("^NSEBANK", 404);
-		const { errors } = await getIndices();
+		const { errors } = await getIndices(null);
 		expect(errors[0]).toMatchObject({ key: "NIFTY_BANK", code: "NOT_FOUND" });
 	});
 });

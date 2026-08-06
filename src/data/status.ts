@@ -12,6 +12,7 @@
  *    absent, and as a numeric string like "95.0100".
  */
 
+import { cacheKey, statusTtlSeconds, withCache, type Cached, type CacheStore } from "./cache";
 import { fetchJson } from "./http";
 
 export const NSE_MARKET_STATUS_URL = "https://www.nseindia.com/api/marketStatus";
@@ -118,10 +119,23 @@ export function mapMarketStatus(raw: unknown): MarketStatus {
 	};
 }
 
-export async function getMarketStatus(): Promise<MarketStatus> {
+/** Fetch market status straight from upstream, bypassing any cache. */
+export async function fetchMarketStatus(): Promise<MarketStatus> {
 	const raw = await fetchJson<unknown>(NSE_MARKET_STATUS_URL, {
 		source: SOURCE,
 		headers: { Referer: "https://www.nseindia.com/" },
 	});
 	return mapMarketStatus(raw);
+}
+
+/**
+ * Market status, cached with the same market-hours-aware TTL as quotes, and
+ * additionally clamped so an entry cannot outlive the open or close it
+ * describes (see `statusTtlSeconds`). Pass `store: null` to bypass caching.
+ */
+export async function getMarketStatus(
+	store: CacheStore | null,
+	now: Date = new Date(),
+): Promise<Cached<MarketStatus>> {
+	return withCache(store, cacheKey.status(), statusTtlSeconds(now), fetchMarketStatus, { now });
 }
