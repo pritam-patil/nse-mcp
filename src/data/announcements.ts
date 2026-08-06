@@ -6,6 +6,13 @@
  * only a browser-like User-Agent and a Referer.
  */
 
+import {
+	cacheKey,
+	TTL_DEFAULT_SECONDS,
+	withCache,
+	type Cached,
+	type CacheStore,
+} from "./cache";
 import { fetchJson } from "./http";
 
 export const NSE_ANNOUNCEMENTS_URL =
@@ -97,11 +104,38 @@ export function mapAnnouncements(raw: unknown, limit?: number): Announcement[] {
 	return typeof limit === "number" && limit >= 0 ? mapped.slice(0, limit) : mapped;
 }
 
-/** Fetch recent equity announcements. NSE returns ~20 records per call. */
-export async function getAnnouncements(opts: { limit?: number } = {}): Promise<Announcement[]> {
+export type AnnouncementsResult = {
+	announcements: Announcement[];
+};
+
+/** Fetch recent equity announcements straight from upstream. NSE returns ~20 per call. */
+export async function fetchAnnouncements(): Promise<AnnouncementsResult> {
 	const raw = await fetchJson<unknown>(NSE_ANNOUNCEMENTS_URL, {
 		source: SOURCE,
 		headers: { Referer: REFERER },
 	});
-	return mapAnnouncements(raw, opts.limit);
+	return { announcements: mapAnnouncements(raw) };
+}
+
+/**
+ * Recent equity announcements, cached for 15 minutes.
+ *
+ * The full record set is cached and `limit` is applied on read, so callers
+ * asking for different limits share one entry rather than fragmenting the key
+ * space. Pass `store: null` to bypass caching.
+ */
+export async function getAnnouncements(
+	store: CacheStore | null,
+	opts: { limit?: number; now?: Date } = {},
+): Promise<Cached<AnnouncementsResult>> {
+	const now = opts.now ?? new Date();
+	const result = await withCache(
+		store,
+		cacheKey.announcements(),
+		TTL_DEFAULT_SECONDS,
+		fetchAnnouncements,
+		{ now },
+	);
+	if (typeof opts.limit !== "number" || opts.limit < 0) return result;
+	return { ...result, announcements: result.announcements.slice(0, opts.limit) };
 }

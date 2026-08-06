@@ -8,6 +8,7 @@
  * Do not switch to Yahoo's v7/finance/quote: it is crumb-gated and answers 401.
  */
 
+import { cacheKey, quoteTtlSeconds, withCache, type Cached, type CacheStore } from "./cache";
 import { DataError, fetchJson } from "./http";
 
 export const YAHOO_CHART_BASE = "https://query1.finance.yahoo.com/v8/finance/chart";
@@ -167,9 +168,33 @@ export async function fetchChart(yahooSymbol: string): Promise<YahooChartRespons
 	return fetchJson<YahooChartResponse>(url, { source: SOURCE });
 }
 
-/** Fetch a quote for a plain NSE symbol (the ".NS" suffix is added internally). */
-export async function getQuote(symbol: string): Promise<Quote> {
+/** Fetch a quote straight from upstream, bypassing any cache. */
+export async function fetchQuote(symbol: string): Promise<Quote> {
 	const display = normalizeSymbol(symbol);
 	const yahoo = toYahooSymbol(display);
 	return mapQuote(await fetchChart(yahoo), display, yahoo);
+}
+
+/**
+ * Fetch a quote for a plain NSE symbol (the ".NS" suffix is added internally),
+ * served from KV when fresh. TTL is 60s while NSE trades and 15 minutes
+ * otherwise. Pass `store: null` to bypass caching.
+ *
+ * An unusable symbol throws before the cache is touched, so junk input never
+ * occupies a key.
+ */
+export async function getQuote(
+	store: CacheStore | null,
+	symbol: string,
+	now: Date = new Date(),
+): Promise<Cached<Quote>> {
+	const display = normalizeSymbol(symbol);
+	const yahoo = toYahooSymbol(display);
+	return withCache(
+		store,
+		cacheKey.quote(display),
+		quoteTtlSeconds(now),
+		async () => mapQuote(await fetchChart(yahoo), display, yahoo),
+		{ now },
+	);
 }
