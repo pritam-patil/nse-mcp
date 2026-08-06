@@ -46,18 +46,18 @@ Returns per-segment state directly:
 
 ```json
 {
-  "marketState": [
-    {
-      "market": "Capital Market",
-      "marketStatus": "Closed",
-      "tradeDate": "06-Aug-2026 15:30",
-      "index": "NIFTY 50",
-      "last": 24636,
-      "variation": 11.35,
-      "percentChange": 0.05,
-      "marketStatusMessage": "..."
-    }
-  ]
+	"marketState": [
+		{
+			"market": "Capital Market",
+			"marketStatus": "Closed",
+			"tradeDate": "06-Aug-2026 15:30",
+			"index": "NIFTY 50",
+			"last": 24636,
+			"variation": 11.35,
+			"percentChange": 0.05,
+			"marketStatusMessage": "..."
+		}
+	]
 }
 ```
 
@@ -89,6 +89,7 @@ Same endpoint; `meta.validRanges` and `dataGranularity` advertise what is suppor
 
 - **Both sources are undocumented and unofficial.** Neither NSE's `/api/` routes nor Yahoo's `query1` endpoints carry a stability guarantee. `quote-equity` being 403 today is itself evidence that NSE's posture shifts; anything usable now can close later.
 - **Treat every source as failure-prone.** Cache responses, set explicit fetch timeouts, and return a typed "source unavailable" rather than letting a tool call hang or throw.
+- **Yahoo rate-limits aggressively, and escalates.** Discovered in Burse 3 while capturing fixtures, not in the original spike. From a residential IP, repeated chart requests earn `429 Too Many Requests` within a handful of calls, and the block then widens: one capture needed 25 retries over 12 minutes before succeeding, and `query2` shares the limit with `query1`. The spike's 22 clean runs came from Cloudflare egress, which was not throttled — so **Worker-side behaviour and local-dev behaviour differ sharply here**. Expect 429s when developing locally, cache aggressively, and treat a 429 as retryable-but-backed-off rather than as an outage. NSE's endpoints showed no comparable throttling.
 - **One transient empty response** in ~39 requests (not reproduced in 22 subsequent runs). Budget for retries.
 - **Geographic caveat:** every run was served from colo **MRS (Marseille)** — Cloudflare's choice, not selectable. NSE responses may differ from an Indian colo. The residential-IP cross-check above partly offsets this for `a`, but `b`/`d` latency in particular could vary.
 - **Deploy propagation is not instant.** Three requests immediately after a deploy hit the previous version. Allow ~30s before trusting post-deploy probes.
@@ -109,4 +110,4 @@ burst 2 items.
 
 ## Cleanup
 
-`/spike` and `src/spike.ts` are temporary and still live on the public URL. They expose no secrets, but they do let anyone trigger outbound fetches from the Worker. Remove both before this goes anywhere real.
+Done in Burse 3: `/spike` and `src/spike.ts` were deleted and the removal deployed; the route now 404s. The findings above stand on the fixtures captured under `test/fixtures/`, which the mapper unit tests assert against.
