@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
+import { handleSpike } from "./spike";
 
 function createServer() {
 	const server = new McpServer({
@@ -31,6 +32,10 @@ const handler = createMcpHandler(createServer);
 
 export default {
 	fetch(request: Request, env: Env, ctx: ExecutionContext) {
+		// TEMPORARY (Burse 2): upstream source probe. Remove with src/spike.ts.
+		if (new URL(request.url).pathname === "/spike") {
+			return handleSpike(request);
+		}
 		return handler(request, env, ctx);
 	},
 } satisfies ExportedHandler<Env>;
