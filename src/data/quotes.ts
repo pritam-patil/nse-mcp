@@ -64,8 +64,8 @@ export type Quote = {
 	source: typeof SOURCE;
 };
 
-/** NSE symbols are alphanumeric plus & - _ (M&M, BAJAJ-AUTO). */
-const SYMBOL_RE = /^[A-Z0-9&\-_]{1,20}$/;
+/** NSE symbols are uppercase alphanumerics plus & and - (M&M, BAJAJ-AUTO). */
+const SYMBOL_RE = /^[A-Z0-9&-]{1,20}$/;
 
 function num(v: unknown): number | null {
 	return typeof v === "number" && Number.isFinite(v) ? v : null;

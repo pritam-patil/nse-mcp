@@ -108,10 +108,12 @@ export {
 	EQUITY_L_URL,
 	getSymbolMatches,
 	loadSymbols,
+	loadSymbolStore,
 	parseEquityCsv,
 	refreshSymbols,
 	searchSymbols,
 	type SymbolEntry,
+	type SymbolMatches,
 } from "./symbols";
 
 export {

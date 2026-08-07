@@ -161,12 +161,16 @@ describe("getSymbolMatches", () => {
 			count: entries.length,
 			symbols: entries.map((e) => [e.symbol, e.name]),
 		});
-		const results = await getSymbolMatches(memoryStore(seed).store, "reliance");
-		expect(results[0].symbol).toBe("RELIANCE");
+		const { matches, updatedAt } = await getSymbolMatches(memoryStore(seed).store, "reliance");
+		expect(matches[0].symbol).toBe("RELIANCE");
+		// The list's refresh time travels with the result for the as-of line.
+		expect(updatedAt).toBe("2026-08-07T00:00:00.000Z");
 	});
 
-	it("returns [] when the list has not been populated", async () => {
-		expect(await getSymbolMatches(memoryStore().store, "reliance")).toEqual([]);
+	it("returns empty matches and null updatedAt when the list is unpopulated", async () => {
+		const { matches, updatedAt } = await getSymbolMatches(memoryStore().store, "reliance");
+		expect(matches).toEqual([]);
+		expect(updatedAt).toBeNull();
 	});
 });
 
@@ -221,21 +225,32 @@ describe("refreshSymbols", () => {
 });
 
 describe("formatSymbolMatches", () => {
-	it("renders SYMBOL — Company Name lines", () => {
+	it("renders SYMBOL — Company Name lines and an as-of from the list date", () => {
 		const text = formatSymbolMatches(
 			[
 				{ symbol: "RELIANCE", name: "Reliance Industries Limited" },
 				{ symbol: "TCS", name: "Tata Consultancy Services Limited" },
 			],
 			"reliance",
+			"2026-08-07T00:00:00.000Z",
 		);
-		expect(text).toBe(
-			"RELIANCE — Reliance Industries Limited\nTCS — Tata Consultancy Services Limited",
-		);
+		const lines = text.split("\n");
+		expect(lines[0]).toBe("RELIANCE — Reliance Industries Limited");
+		expect(lines[1]).toBe("TCS — Tata Consultancy Services Limited");
+		expect(lines.at(-1)).toBe("as of 07-Aug-2026 05:30 IST");
+	});
+
+	it("caps output at 25 items", () => {
+		const many = Array.from({ length: 40 }, (_, i) => ({ symbol: `SYM${i}`, name: `Co ${i}` }));
+		const rows = formatSymbolMatches(many, "sym", "2026-08-07T00:00:00.000Z").split("\n");
+		// 25 matches + 1 as-of line.
+		expect(rows).toHaveLength(26);
 	});
 
 	it("reports no matches with the query echoed back", () => {
-		expect(formatSymbolMatches([], "zzz")).toBe('No NSE symbols match "zzz".');
+		const text = formatSymbolMatches([], "zzz");
+		expect(text.split("\n")[0]).toBe('No NSE symbols match "zzz".');
+		expect(text).toContain("as of");
 	});
 
 	it("is not JSON", () => {

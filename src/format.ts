@@ -73,6 +73,14 @@ function istParts(epochSeconds: number): { date: string; time: string } {
 	return { date: `${dd}-${mon}-${yyyy}`, time: `${hh}:${mm}` };
 }
 
+/** Cap a list to at most 25 items; the shared limit for every list output. */
+export const MAX_LIST_ITEMS = 25;
+
+/** An IST as-of string from a cache/refresh timestamp, or a plain fallback. */
+function asOfFrom(iso: string | null | undefined): string {
+	return istTimestamp(iso) ?? "just now";
+}
+
 /** Compose body lines, a possible stale note, and the trailing "as of" line. */
 function compose(lines: string[], asOf: string, stale: boolean): string {
 	const out = [...lines];
@@ -84,9 +92,21 @@ function compose(lines: string[], asOf: string, stale: boolean): string {
 }
 
 /** Symbol search results as "SYMBOL — Company Name" lines, one per match. */
-export function formatSymbolMatches(matches: SymbolEntry[], query: string): string {
-	if (matches.length === 0) return `No NSE symbols match "${query}".`;
-	return matches.map((m) => `${m.symbol} — ${m.name}`).join("\n");
+export function formatSymbolMatches(
+	matches: SymbolEntry[],
+	query: string,
+	listUpdatedAt?: string | null,
+): string {
+	const asOf = istTimestamp(listUpdatedAt) ?? "unknown";
+	const capped = matches.slice(0, MAX_LIST_ITEMS);
+	if (capped.length === 0) {
+		return compose([`No NSE symbols match "${query}".`], asOf, false);
+	}
+	return compose(
+		capped.map((m) => `${m.symbol} — ${m.name}`),
+		asOf,
+		false,
+	);
 }
 
 /** Corporate announcements: date, headline, and link per item, newest first. */
@@ -94,10 +114,11 @@ export function formatAnnouncements(
 	result: Cached<AnnouncementsResult>,
 	opts: { symbol?: string } = {},
 ): string {
-	const { announcements } = result;
+	const asOf = asOfFrom(result.cachedAt);
+	const announcements = result.announcements.slice(0, MAX_LIST_ITEMS);
 	if (announcements.length === 0) {
 		const who = opts.symbol ? ` for ${opts.symbol.toUpperCase()}` : "";
-		return `No recent announcements${who}.`;
+		return compose([`No recent announcements${who}.`], asOf, result.stale);
 	}
 
 	const lines = announcements.map((a) => {
@@ -107,11 +128,7 @@ export function formatAnnouncements(
 		const link = a.attachmentUrl ? `\n  ${a.attachmentUrl}` : "";
 		return `${when} — ${sym}${headline}${link}`;
 	});
-
-	if (result.stale) {
-		lines.push("Note: stale — upstream unavailable, showing last cached value.");
-	}
-	return lines.join("\n");
+	return compose(lines, asOf, result.stale);
 }
 
 /** Corporate actions: type, purpose, ex-date and record date per item, newest first. */
@@ -119,8 +136,15 @@ export function formatCorporateActions(
 	result: Cached<CorporateActionsResult>,
 	symbol: string,
 ): string {
-	const { actions } = result;
-	if (actions.length === 0) return `No recent corporate actions for ${symbol.toUpperCase()}.`;
+	const asOf = asOfFrom(result.cachedAt);
+	const actions = result.actions.slice(0, MAX_LIST_ITEMS);
+	if (actions.length === 0) {
+		return compose(
+			[`No recent corporate actions for ${symbol.toUpperCase()}.`],
+			asOf,
+			result.stale,
+		);
+	}
 
 	const lines = actions.map((a) => {
 		const subject = a.subject ?? a.type;
@@ -128,11 +152,7 @@ export function formatCorporateActions(
 		const rec = a.recordDate ? `, record ${a.recordDate}` : "";
 		return `${a.type}: ${subject} (${ex}${rec})`;
 	});
-
-	if (result.stale) {
-		lines.push("Note: stale — upstream unavailable, showing last cached value.");
-	}
-	return lines.join("\n");
+	return compose(lines, asOf, result.stale);
 }
 
 /** Historical OHLC series: a header, one compact row per bar, oldest to newest. */
@@ -144,7 +164,7 @@ export function formatPriceHistory(h: Cached<PriceHistory>): string {
 		` — OHLC in ${currency}`;
 
 	if (h.rows.length === 0) {
-		return compose([header, "No price data for this range."], "unknown", h.stale);
+		return compose([header, "No price data for this range."], asOfFrom(h.cachedAt), h.stale);
 	}
 
 	const rows = h.rows.map((r) => {

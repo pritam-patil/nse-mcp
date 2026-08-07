@@ -155,10 +155,10 @@ describe("formatCorporateActions", () => {
 		);
 	});
 
-	it("gives a friendly message when there are none", () => {
-		expect(formatCorporateActions(cached({ actions: [] }), "reliance")).toBe(
-			"No recent corporate actions for RELIANCE.",
-		);
+	it("gives a friendly message when there are none, with an as-of", () => {
+		const text = formatCorporateActions(cached({ actions: [] }), "reliance");
+		expect(text.split("\n")[0]).toBe("No recent corporate actions for RELIANCE.");
+		expect(text).toContain("as of");
 	});
 
 	it("marks stale data", () => {
