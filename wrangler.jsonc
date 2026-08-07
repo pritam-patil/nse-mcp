@@ -11,26 +11,22 @@
 	"name": "nse-mcp",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-07-02",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
+	"compatibility_flags": ["nodejs_compat"],
 	"kv_namespaces": [
 		{
 			"binding": "CACHE",
-			"id": "91ae66870ba947c79b6ca124227f4a86"
-		}
+			"id": "91ae66870ba947c79b6ca124227f4a86",
+		},
 	],
 	"triggers": {
 		// Weekly refresh of the EQUITY_L symbol list: Mondays 01:00 UTC (06:30 IST),
 		// before the trading week. (Cloudflare cron uses day-of-week 1-7, not 0-6.)
-		"crons": [
-			"0 1 * * 1"
-		]
+		"crons": ["0 1 * * 1"],
 	},
 	"observability": {
-		"enabled": true
+		"enabled": true,
 	},
-	"upload_source_maps": true
+	"upload_source_maps": true,
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

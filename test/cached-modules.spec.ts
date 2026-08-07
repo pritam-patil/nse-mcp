@@ -68,11 +68,7 @@ describe("getQuote", () => {
 		const { store } = memoryStore();
 		const fn = stubFetch();
 		await getQuote(store, "RELIANCE", DURING_HOURS);
-		const second = await getQuote(
-			store,
-			"RELIANCE",
-			new Date(DURING_HOURS.getTime() + 30_000),
-		);
+		const second = await getQuote(store, "RELIANCE", new Date(DURING_HOURS.getTime() + 30_000));
 		expect(fn).toHaveBeenCalledTimes(1);
 		expect(second.stale).toBe(false);
 		expect(second.price).toBe(1325);

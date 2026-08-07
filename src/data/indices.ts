@@ -5,13 +5,7 @@
  * the equity symbol normaliser entirely.
  */
 
-import {
-	cacheKey,
-	TTL_DEFAULT_SECONDS,
-	withCache,
-	type Cached,
-	type CacheStore,
-} from "./cache";
+import { cacheKey, TTL_DEFAULT_SECONDS, withCache, type Cached, type CacheStore } from "./cache";
 import { isDataError, type DataErrorCode } from "./http";
 import { fetchChart, mapQuote, type Quote } from "./quotes";
 

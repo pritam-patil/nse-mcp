@@ -66,7 +66,8 @@ export function secondsUntilNextBoundary(now: Date): number {
 
 	if (isWeekday(day)) {
 		if (minutes < MARKET_OPEN_MINUTES) return wholeMinutes(MARKET_OPEN_MINUTES) + partialMinute;
-		if (minutes < MARKET_CLOSE_MINUTES) return wholeMinutes(MARKET_CLOSE_MINUTES) + partialMinute;
+		if (minutes < MARKET_CLOSE_MINUTES)
+			return wholeMinutes(MARKET_CLOSE_MINUTES) + partialMinute;
 	}
 
 	// After the close, or on a weekend: the next boundary is the next weekday open.
