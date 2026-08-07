@@ -9,6 +9,7 @@
 		"lint:fix": "oxlint --fix",
 		"start": "wrangler dev",
 		"test": "vitest run",
+		"refresh-symbols": "node scripts/refresh-symbols.mjs",
 		"cf-typegen": "wrangler types",
 		"type-check": "tsc --noEmit"
 	},

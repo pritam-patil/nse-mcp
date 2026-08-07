@@ -51,6 +51,7 @@ export const cacheKey = {
 	indices: () => "v1:indices",
 	announcements: () => "v1:announcements:equities",
 	status: () => "v1:status",
+	symbols: () => "v1:symbols",
 };
 
 type Envelope<T> = {

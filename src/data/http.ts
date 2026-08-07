@@ -81,16 +81,18 @@ function classifyStatus(status: number, source: string, body: string): DataError
 	);
 }
 
-async function attempt<T>(
+/** One request attempt: returns the raw body text or throws a typed DataError. */
+async function requestBody(
 	url: string,
 	source: string,
 	headers: Record<string, string>,
+	accept: string,
 	timeoutMs: number,
-): Promise<T> {
+): Promise<string> {
 	let res: Response;
 	try {
 		res = await fetch(url, {
-			headers: { "User-Agent": BROWSER_UA, Accept: "application/json", ...headers },
+			headers: { "User-Agent": BROWSER_UA, Accept: accept, ...headers },
 			signal: AbortSignal.timeout(timeoutMs),
 			redirect: "follow",
 		});
@@ -114,7 +116,7 @@ async function attempt<T>(
 
 	if (!res.ok) throw classifyStatus(res.status, source, body);
 
-	// The spike saw one empty 200. Treat it as transient rather than as valid JSON.
+	// The spike saw one empty 200. Treat it as transient rather than as valid data.
 	if (body.trim() === "") {
 		throw new DataError("SOURCE_UNAVAILABLE", `${source}: empty response body`, {
 			source,
@@ -123,33 +125,20 @@ async function attempt<T>(
 		});
 	}
 
-	try {
-		return JSON.parse(body) as T;
-	} catch (err) {
-		// Refusals arrive as HTML; a 200 that will not parse is worth one retry.
-		throw new DataError("SOURCE_UNAVAILABLE", `${source}: response was not valid JSON`, {
-			source,
-			status: res.status,
-			retryable: true,
-			cause: err,
-		});
-	}
+	return body;
 }
 
-/**
- * GET a JSON document. Throws {@link DataError} on every failure path.
- *
- * Note the worst case is `timeoutMs * (retries + 1)` plus retry delays — with
- * the defaults, about 10.3s. Callers on a tighter budget should lower timeoutMs.
- */
-export async function fetchJson<T>(url: string, opts: FetchJsonOptions): Promise<T> {
-	const { source, headers = {}, timeoutMs = DEFAULT_TIMEOUT_MS, retries = 1 } = opts;
-
+/** Retry wrapper shared by fetchJson/fetchText: retries only retryable DataErrors. */
+async function runWithRetries<T>(
+	source: string,
+	retries: number,
+	fn: () => Promise<T>,
+): Promise<T> {
 	let last: DataError | undefined;
 	for (let i = 0; i <= retries; i++) {
 		if (i > 0) await delay(RETRY_DELAY_MS);
 		try {
-			return await attempt<T>(url, source, headers, timeoutMs);
+			return await fn();
 		} catch (err) {
 			const de = isDataError(err)
 				? err
@@ -162,4 +151,44 @@ export async function fetchJson<T>(url: string, opts: FetchJsonOptions): Promise
 		}
 	}
 	throw last ?? new DataError("SOURCE_UNAVAILABLE", `${source}: exhausted retries`, { source });
+}
+
+/**
+ * GET a JSON document. Throws {@link DataError} on every failure path.
+ *
+ * Note the worst case is `timeoutMs * (retries + 1)` plus retry delays — with
+ * the defaults, about 10.3s. Callers on a tighter budget should lower timeoutMs.
+ */
+export async function fetchJson<T>(url: string, opts: FetchJsonOptions): Promise<T> {
+	const { source, headers = {}, timeoutMs = DEFAULT_TIMEOUT_MS, retries = 1 } = opts;
+	return runWithRetries(source, retries, async () => {
+		const body = await requestBody(url, source, headers, "application/json", timeoutMs);
+		try {
+			return JSON.parse(body) as T;
+		} catch (err) {
+			// Refusals arrive as HTML; a 200 that will not parse is worth one retry.
+			throw new DataError("SOURCE_UNAVAILABLE", `${source}: response was not valid JSON`, {
+				source,
+				retryable: true,
+				cause: err,
+			});
+		}
+	});
+}
+
+/** GET a plain-text document (e.g. a CSV). Throws {@link DataError} on failure. */
+export async function fetchText(
+	url: string,
+	opts: FetchJsonOptions & { accept?: string },
+): Promise<string> {
+	const {
+		source,
+		headers = {},
+		timeoutMs = DEFAULT_TIMEOUT_MS,
+		retries = 1,
+		accept = "text/csv,text/plain,*/*",
+	} = opts;
+	return runWithRetries(source, retries, () =>
+		requestBody(url, source, headers, accept, timeoutMs),
+	);
 }

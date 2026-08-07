@@ -4,7 +4,7 @@
  * line so the model can state data freshness, and marks stale data explicitly.
  */
 
-import type { Cached, IndexKey, IndicesResult, MarketStatus, Quote } from "./data";
+import type { Cached, IndexKey, IndicesResult, MarketStatus, Quote, SymbolEntry } from "./data";
 import { IST_OFFSET_MINUTES, NSE_INDICES } from "./data";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -60,6 +60,12 @@ function compose(lines: string[], asOf: string, stale: boolean): string {
 	}
 	out.push(`as of ${asOf}`);
 	return out.join("\n");
+}
+
+/** Symbol search results as "SYMBOL — Company Name" lines, one per match. */
+export function formatSymbolMatches(matches: SymbolEntry[], query: string): string {
+	if (matches.length === 0) return `No NSE symbols match "${query}".`;
+	return matches.map((m) => `${m.symbol} — ${m.name}`).join("\n");
 }
 
 /** One NSE equity quote. */
