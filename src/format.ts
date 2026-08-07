@@ -4,7 +4,16 @@
  * line so the model can state data freshness, and marks stale data explicitly.
  */
 
-import type { Cached, IndexKey, IndicesResult, MarketStatus, Quote, SymbolEntry } from "./data";
+import type {
+	AnnouncementsResult,
+	Cached,
+	CorporateActionsResult,
+	IndexKey,
+	IndicesResult,
+	MarketStatus,
+	Quote,
+	SymbolEntry,
+} from "./data";
 import { IST_OFFSET_MINUTES, NSE_INDICES } from "./data";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -66,6 +75,52 @@ function compose(lines: string[], asOf: string, stale: boolean): string {
 export function formatSymbolMatches(matches: SymbolEntry[], query: string): string {
 	if (matches.length === 0) return `No NSE symbols match "${query}".`;
 	return matches.map((m) => `${m.symbol} — ${m.name}`).join("\n");
+}
+
+/** Corporate announcements: date, headline, and link per item, newest first. */
+export function formatAnnouncements(
+	result: Cached<AnnouncementsResult>,
+	opts: { symbol?: string } = {},
+): string {
+	const { announcements } = result;
+	if (announcements.length === 0) {
+		const who = opts.symbol ? ` for ${opts.symbol.toUpperCase()}` : "";
+		return `No recent announcements${who}.`;
+	}
+
+	const lines = announcements.map((a) => {
+		const when = istTimestamp(a.announcedAtIso) ?? a.announcedAt ?? "date unknown";
+		const sym = !opts.symbol && a.symbol ? `${a.symbol}: ` : "";
+		const headline = a.description ?? "(no description)";
+		const link = a.attachmentUrl ? `\n  ${a.attachmentUrl}` : "";
+		return `${when} — ${sym}${headline}${link}`;
+	});
+
+	if (result.stale) {
+		lines.push("Note: stale — upstream unavailable, showing last cached value.");
+	}
+	return lines.join("\n");
+}
+
+/** Corporate actions: type, purpose, ex-date and record date per item, newest first. */
+export function formatCorporateActions(
+	result: Cached<CorporateActionsResult>,
+	symbol: string,
+): string {
+	const { actions } = result;
+	if (actions.length === 0) return `No recent corporate actions for ${symbol.toUpperCase()}.`;
+
+	const lines = actions.map((a) => {
+		const subject = a.subject ?? a.type;
+		const ex = a.exDate ? `ex-date ${a.exDate}` : "ex-date n/a";
+		const rec = a.recordDate ? `, record ${a.recordDate}` : "";
+		return `${a.type}: ${subject} (${ex}${rec})`;
+	});
+
+	if (result.stale) {
+		lines.push("Note: stale — upstream unavailable, showing last cached value.");
+	}
+	return lines.join("\n");
 }
 
 /** One NSE equity quote. */

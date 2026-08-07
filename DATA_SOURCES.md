@@ -85,6 +85,14 @@ Fields: `symbol`, `sm_name`, `desc`, `an_dt`, `sort_date`, `attchmntText`, `attc
 
 Same endpoint; `meta.validRanges` and `dataGranularity` advertise what is supported. Not separately probed in this spike.
 
+### 5. Corporate actions → **NSE `/api/corporates-corporateActions`** (probed Burse 7)
+
+Reachable and returning data, from both a residential IP and the Worker. Per-symbol (`?index=equities&symbol=RELIANCE`) it returns ~20 records, newest first, ~6KB. Fields: `symbol`, `comp`, `subject` (free text, e.g. "Dividend - Rs 6 Per Share", "Bonus 1:1", "Rights 1:15 @ Premium Rs 1247", "Demerger"), `exDate`, `recDate`, `series`, `faceVal`, `isin`, plus book-closure (`bcStartDate`/`bcEndDate`) and no-delivery (`ndStartDate`/`ndEndDate`) windows, with `-` as the absent-date placeholder. Dates are date-only `dd-Mon-yyyy`. Action type has to be inferred from the `subject` text — there is no type field.
+
+### Per-symbol announcements have a full-history footgun
+
+`/api/corporate-announcements?index=equities&symbol=SYM` **with no date range returns the symbol's entire history** — RELIANCE was ~2.8MB. Bounding it with `from_date`/`to_date` (format `dd-mm-yyyy`) collapses it to tens of KB (~90 days ≈ 37KB). The `get_announcements` tool always sends a date window for symbol queries for this reason. The market-wide feed (no symbol) stays ~13–15KB.
+
 ## Risks to design around
 
 - **Both sources are undocumented and unofficial.** Neither NSE's `/api/` routes nor Yahoo's `query1` endpoints carry a stability guarantee. `quote-equity` being 403 today is itself evidence that NSE's posture shifts; anything usable now can close later.
