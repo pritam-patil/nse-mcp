@@ -6,13 +6,7 @@
  * only a browser-like User-Agent and a Referer.
  */
 
-import {
-	cacheKey,
-	TTL_DEFAULT_SECONDS,
-	withCache,
-	type Cached,
-	type CacheStore,
-} from "./cache";
+import { cacheKey, TTL_DEFAULT_SECONDS, withCache, type Cached, type CacheStore } from "./cache";
 import { fetchJson } from "./http";
 
 export const NSE_ANNOUNCEMENTS_URL =

@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	isMarketHours,
-	istParts,
-	secondsUntilNextBoundary,
-} from "../src/data/market-hours";
+import { isMarketHours, istParts, secondsUntilNextBoundary } from "../src/data/market-hours";
 
 /** Build a Date from an IST wall-clock time. IST is UTC+05:30. */
 function ist(iso: string): Date {
