@@ -93,7 +93,7 @@ Reachable and returning data. Per-symbol (`?index=equities&symbol=RELIANCE`) it 
 
 ### 6. Historical OHLC → **Yahoo chart v8** `?range=&interval=` (built Burse 8)
 
-The chart endpoint carries `timestamp[]` and `indicators.quote[0].{open,high,low,close,volume[]}`. `meta.validRanges` lists the accepted ranges; `meta.dataGranularity` reports the granularity actually returned. Valid range/interval combos are constrained (minute granularities only reach back days, not years — e.g. `1m` ≈ 7 days) — Yahoo rejects bad combos, and `get_price_history` also validates up front. Bars with a null close (holidays/halts) appear and are dropped. Results are capped at ~60 rows (downsampled). Cached for 1 hour, since historical series change slowly.
+The chart endpoint carries `timestamp[]` and `indicators.quote[0].{open,high,low,close,volume[]}`. `meta.validRanges` lists the accepted ranges; `meta.dataGranularity` reports the granularity actually returned. Valid range/interval combos are constrained (minute granularities only reach back days, not years — e.g. `1m` ≈ 7 days) — Yahoo rejects bad combos, and `get_stock_price_history` also validates up front. Bars with a null close (holidays/halts) appear and are dropped. Results are capped at ~60 rows (downsampled). Cached for 1 hour, since historical series change slowly.
 
 ### Per-symbol announcements have a full-history footgun
 
