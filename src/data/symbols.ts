@@ -113,19 +113,28 @@ export async function refreshSymbols(
 	return { count: entries.length };
 }
 
-/** Read the stored symbol list from KV. Returns [] if never populated or corrupt. */
-export async function loadSymbols(store: CacheStore): Promise<SymbolEntry[]> {
+/** Read the stored list plus when it was last refreshed. Empty + null if absent/corrupt. */
+export async function loadSymbolStore(
+	store: CacheStore,
+): Promise<{ symbols: SymbolEntry[]; updatedAt: string | null }> {
 	const raw = await store.get(cacheKey.symbols()).catch(() => null);
-	if (!raw) return [];
+	if (!raw) return { symbols: [], updatedAt: null };
 	try {
 		const parsed = JSON.parse(raw) as SymbolStore;
-		if (parsed?.v !== 1 || !Array.isArray(parsed.symbols)) return [];
-		return parsed.symbols
+		if (parsed?.v !== 1 || !Array.isArray(parsed.symbols))
+			return { symbols: [], updatedAt: null };
+		const symbols = parsed.symbols
 			.filter((t) => Array.isArray(t) && t.length >= 2)
 			.map(([symbol, name]) => ({ symbol, name }));
+		return { symbols, updatedAt: typeof parsed.storedAt === "string" ? parsed.storedAt : null };
 	} catch {
-		return [];
+		return { symbols: [], updatedAt: null };
 	}
+}
+
+/** Read the stored symbol list from KV. Returns [] if never populated or corrupt. */
+export async function loadSymbols(store: CacheStore): Promise<SymbolEntry[]> {
+	return (await loadSymbolStore(store)).symbols;
 }
 
 // ---- search ----------------------------------------------------------------
@@ -220,11 +229,21 @@ export function searchSymbols(entries: SymbolEntry[], query: string, limit = 5):
 	return scored.slice(0, limit).map((s) => s.entry);
 }
 
-/** Load the symbol list from KV and return the top matches for `query`. */
+export type SymbolMatches = {
+	matches: SymbolEntry[];
+	/** When the underlying symbol list was last refreshed (ISO), or null. */
+	updatedAt: string | null;
+};
+
+/**
+ * Load the symbol list from KV and return the top matches for `query`, along
+ * with when the list was last refreshed. `limit` is capped at 25.
+ */
 export async function getSymbolMatches(
 	store: CacheStore,
 	query: string,
 	limit = 5,
-): Promise<SymbolEntry[]> {
-	return searchSymbols(await loadSymbols(store), query, limit);
+): Promise<SymbolMatches> {
+	const { symbols, updatedAt } = await loadSymbolStore(store);
+	return { matches: searchSymbols(symbols, query, Math.min(limit, 25)), updatedAt };
 }

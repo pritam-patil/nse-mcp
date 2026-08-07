@@ -126,14 +126,16 @@ describe("formatAnnouncements", () => {
 		expect(text).toMatch(/— [A-Z0-9&-]+: /);
 	});
 
-	it("gives a friendly per-symbol message when empty", () => {
-		expect(formatAnnouncements(cached({ announcements: [] }), { symbol: "reliance" })).toBe(
-			"No recent announcements for RELIANCE.",
-		);
+	it("gives a friendly per-symbol message when empty, with an as-of", () => {
+		const text = formatAnnouncements(cached({ announcements: [] }), { symbol: "reliance" });
+		expect(text.split("\n")[0]).toBe("No recent announcements for RELIANCE.");
+		expect(text).toContain("as of");
 	});
 
 	it("gives a friendly market-wide message when empty", () => {
-		expect(formatAnnouncements(cached({ announcements: [] }))).toBe("No recent announcements.");
+		const text = formatAnnouncements(cached({ announcements: [] }));
+		expect(text.split("\n")[0]).toBe("No recent announcements.");
+		expect(text).toContain("as of");
 	});
 
 	it("marks stale data", () => {
