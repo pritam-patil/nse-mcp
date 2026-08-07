@@ -20,6 +20,13 @@
 			"id": "91ae66870ba947c79b6ca124227f4a86"
 		}
 	],
+	"triggers": {
+		// Weekly refresh of the EQUITY_L symbol list: Mondays 01:00 UTC (06:30 IST),
+		// before the trading week. (Cloudflare cron uses day-of-week 1-7, not 0-6.)
+		"crons": [
+			"0 1 * * 1"
+		]
+	},
 	"observability": {
 		"enabled": true
 	},

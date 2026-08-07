@@ -1,8 +1,16 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
-import { getIndices, getMarketStatus, getQuote, isDataError, kvCache } from "./data";
-import { formatIndices, formatMarketStatus, formatQuote } from "./format";
+import {
+	getIndices,
+	getMarketStatus,
+	getQuote,
+	getSymbolMatches,
+	isDataError,
+	kvCache,
+	refreshSymbols,
+} from "./data";
+import { formatIndices, formatMarketStatus, formatQuote, formatSymbolMatches } from "./format";
 
 const SERVER_INSTRUCTIONS =
 	"NSE (National Stock Exchange of India) market data. Informational market data " +
@@ -75,6 +83,32 @@ function createServer(env: Env) {
 	);
 
 	server.registerTool(
+		"search_symbol",
+		{
+			description:
+				"Find an NSE stock's ticker symbol by company name or partial symbol. Use when the " +
+				"user names a company but not its exact symbol (e.g. 'Reliance', 'HDFC bank', " +
+				"'tata motors') before calling get_quote. Matches on both symbol and company name, " +
+				"tolerates typos, and returns up to 5 'SYMBOL — Company Name' results.",
+			inputSchema: z.object({
+				query: z
+					.string()
+					.min(1)
+					.describe(
+						"Company name or partial/approximate symbol, e.g. 'reliance' or 'INFY'",
+					),
+			}),
+		},
+		async ({ query }) => {
+			try {
+				return textResult(formatSymbolMatches(await getSymbolMatches(cache, query), query));
+			} catch (err) {
+				return toolError(err);
+			}
+		},
+	);
+
+	server.registerTool(
 		"get_indices",
 		{
 			description:
@@ -115,5 +149,14 @@ function handlerFor(env: Env) {
 export default {
 	fetch(request: Request, env: Env, ctx: ExecutionContext) {
 		return handlerFor(env)(request, env, ctx);
+	},
+
+	/**
+	 * Weekly cron (see `triggers.crons` in wrangler.jsonc): refresh the equity
+	 * symbol master list into KV. A failed refresh throws and leaves the previous
+	 * list in place rather than clearing it.
+	 */
+	async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+		ctx.waitUntil(refreshSymbols(kvCache(env.CACHE)));
 	},
 } satisfies ExportedHandler<Env>;

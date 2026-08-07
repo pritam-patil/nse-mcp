@@ -71,6 +71,16 @@ export {
 } from "./announcements";
 
 export {
+	EQUITY_L_URL,
+	getSymbolMatches,
+	loadSymbols,
+	parseEquityCsv,
+	refreshSymbols,
+	searchSymbols,
+	type SymbolEntry,
+} from "./symbols";
+
+export {
 	fetchMarketStatus,
 	getMarketStatus,
 	HEADLINE_SEGMENT,
