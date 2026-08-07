@@ -55,6 +55,7 @@ export const cacheKey = {
 	announcements: (symbol?: string) =>
 		symbol ? `v1:announcements:sym:${symbol}` : "v1:announcements:equities",
 	corporateActions: (symbol: string) => `v1:corpactions:${symbol}`,
+	corporateActionsMarket: () => "v1:corpactions:market",
 	history: (symbol: string, range: string, interval: string) =>
 		`v1:history:${symbol}:${range}:${interval}`,
 	status: () => "v1:status",

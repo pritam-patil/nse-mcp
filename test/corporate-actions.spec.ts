@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cacheKey, type CacheStore } from "../src/data/cache";
 import {
 	classifyAction,
+	filterUpcoming,
 	getCorporateActions,
 	mapCorporateActions,
 	type CorporateActionsResult,
@@ -137,6 +138,49 @@ describe("getCorporateActions", () => {
 		expect(result.actions).toEqual([]);
 		expect(fn).not.toHaveBeenCalled();
 	});
+
+	it("with no symbol, fetches the market-wide feed and returns upcoming ex-dates", async () => {
+		// Window anchored so the fixture's 05-Jun-2026 ex-date is "upcoming".
+		const now = new Date("2026-05-20T00:00:00+05:30");
+		const fn = vi.fn(async (url: string) => {
+			expect(url).not.toContain("symbol="); // market-wide, no symbol param
+			return new Response(JSON.stringify(raw));
+		});
+		vi.stubGlobal("fetch", fn);
+		const { data } = memoryStore();
+		const store: CacheStore = {
+			get: async (k) => data.get(k) ?? null,
+			put: async (k, v) => void data.set(k, v),
+		};
+
+		const result = await getCorporateActions(store, undefined, now);
+		expect([...data.keys()]).toEqual(["v1:corpactions:market"]);
+		expect(result.actions.length).toBeGreaterThan(0);
+		// Everything returned is within the next 30 days, soonest first.
+		expect(result.actions.every((a) => a.exDateIso! >= "2026-05-20")).toBe(true);
+		expect(result.actions[0].exDateIso).toBe("2026-06-05");
+	});
+});
+
+describe("filterUpcoming", () => {
+	const now = new Date("2026-05-20T00:00:00+05:30");
+
+	it("keeps only ex-dates within the next 30 days, soonest first", () => {
+		const out = filterUpcoming(actions, now);
+		expect(out.length).toBeGreaterThan(0);
+		for (const a of out) {
+			expect(a.exDateIso! >= "2026-05-20").toBe(true);
+			expect(a.exDateIso! <= "2026-06-19").toBe(true);
+		}
+		const isos = out.map((a) => a.exDateIso);
+		expect(isos).toEqual([...isos].sort());
+	});
+
+	it("excludes past ex-dates", () => {
+		// All fixture ex-dates are before this date.
+		const out = filterUpcoming(actions, new Date("2027-01-01T00:00:00+05:30"));
+		expect(out).toEqual([]);
+	});
 });
 
 describe("formatCorporateActions", () => {
@@ -148,29 +192,46 @@ describe("formatCorporateActions", () => {
 		cachedAt: string | null;
 	} => ({ ...data, stale, cachedAt: "2026-08-07T00:00:00.000Z" });
 
-	it("renders type, subject, ex-date and record date", () => {
-		const text = formatCorporateActions(cached({ actions: actions.slice(0, 2) }), "RELIANCE");
+	it("renders type, subject, ex-date and record date (per-symbol, no prefix)", () => {
+		const text = formatCorporateActions(cached({ actions: actions.slice(0, 2) }), {
+			symbol: "RELIANCE",
+		});
 		expect(text.split("\n")[0]).toBe(
 			"Dividend: Dividend - Rs 6 Per Share (ex-date 05-Jun-2026, record 05-Jun-2026)",
 		);
 	});
 
-	it("gives a friendly message when there are none, with an as-of", () => {
-		const text = formatCorporateActions(cached({ actions: [] }), "reliance");
+	it("prefixes each line with the symbol in market-wide mode (no symbol)", () => {
+		const text = formatCorporateActions(cached({ actions: actions.slice(0, 2) }));
+		expect(text.split("\n")[0]).toBe(
+			"RELIANCE: Dividend: Dividend - Rs 6 Per Share (ex-date 05-Jun-2026, record 05-Jun-2026)",
+		);
+	});
+
+	it("gives a per-symbol friendly message when there are none, with an as-of", () => {
+		const text = formatCorporateActions(cached({ actions: [] }), { symbol: "reliance" });
 		expect(text.split("\n")[0]).toBe("No recent corporate actions for RELIANCE.");
 		expect(text).toContain("as of");
 	});
 
-	it("marks stale data", () => {
-		const text = formatCorporateActions(
-			cached({ actions: actions.slice(0, 1) }, true),
-			"RELIANCE",
+	it("gives a market-wide friendly message when there are none", () => {
+		const text = formatCorporateActions(cached({ actions: [] }));
+		expect(text.split("\n")[0]).toBe(
+			"No upcoming corporate actions (ex-dates) in the next 30 days.",
 		);
+	});
+
+	it("marks stale data", () => {
+		const text = formatCorporateActions(cached({ actions: actions.slice(0, 1) }, true), {
+			symbol: "RELIANCE",
+		});
 		expect(text).toContain("Note: stale");
 	});
 
 	it("is not JSON", () => {
-		const text = formatCorporateActions(cached({ actions: actions.slice(0, 3) }), "RELIANCE");
+		const text = formatCorporateActions(cached({ actions: actions.slice(0, 3) }), {
+			symbol: "RELIANCE",
+		});
 		expect(text).not.toContain("{");
 	});
 });

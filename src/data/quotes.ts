@@ -93,13 +93,16 @@ export function epochSecondsToIso(sec: unknown): string | null {
  * Accepts "reliance", "RELIANCE", or "RELIANCE.NS" and returns the bare symbol.
  * Throws NOT_FOUND for input that cannot be an NSE symbol, so callers get the
  * same typed error whether the symbol is malformed or merely unknown upstream.
+ * The error names search_symbol so a company name can be resolved to a ticker.
  */
 export function normalizeSymbol(input: string): string {
 	const raw = (input ?? "").trim().toUpperCase().replace(/\.NS$/, "");
 	if (!SYMBOL_RE.test(raw)) {
-		throw new DataError("NOT_FOUND", `invalid NSE symbol: ${JSON.stringify(input)}`, {
-			source: SOURCE,
-		});
+		throw new DataError(
+			"NOT_FOUND",
+			`${JSON.stringify(input)} is not a valid NSE ticker — use search_symbol to look it up by company name.`,
+			{ source: SOURCE },
+		);
 	}
 	return raw;
 }
@@ -107,6 +110,45 @@ export function normalizeSymbol(input: string): string {
 /** Index symbols (^NSEI) pass through untouched; equities gain the .NS suffix. */
 export function toYahooSymbol(symbol: string): string {
 	return symbol.startsWith("^") ? symbol : `${symbol}.NS`;
+}
+
+/**
+ * Common spoken/written aliases for the two indices this server supports,
+ * mapped to their Yahoo symbols. Lets get_quote / get_price_history accept
+ * "NIFTY", "NIFTY 50", "BANKNIFTY", "NIFTY BANK" etc. directly.
+ */
+const INDEX_ALIASES: Record<string, { yahoo: string; label: string }> = {
+	NIFTY: { yahoo: "^NSEI", label: "NIFTY 50" },
+	NIFTY50: { yahoo: "^NSEI", label: "NIFTY 50" },
+	"^NSEI": { yahoo: "^NSEI", label: "NIFTY 50" },
+	BANKNIFTY: { yahoo: "^NSEBANK", label: "NIFTY BANK" },
+	NIFTYBANK: { yahoo: "^NSEBANK", label: "NIFTY BANK" },
+	"^NSEBANK": { yahoo: "^NSEBANK", label: "NIFTY BANK" },
+};
+
+export type ResolvedSymbol = {
+	/** How the instrument is shown to the caller, e.g. "RELIANCE" or "NIFTY 50". */
+	display: string;
+	/** The symbol sent to Yahoo, e.g. "RELIANCE.NS" or "^NSEI". */
+	yahoo: string;
+	isIndex: boolean;
+};
+
+/**
+ * Resolve a caller symbol to what we display and what we query upstream.
+ *
+ * Index aliases (NIFTY, NIFTY 50, BANKNIFTY, NIFTY BANK, and the raw ^ symbols)
+ * resolve to ^NSEI / ^NSEBANK, bypassing .NS suffixing and stock-symbol
+ * validation. Everything else goes through the equity path (uppercase, strip
+ * .NS, validate the stock charset).
+ */
+export function resolveSymbol(input: string): ResolvedSymbol {
+	const upper = (input ?? "").trim().toUpperCase().replace(/\.NS$/, "");
+	const alias = INDEX_ALIASES[upper] ?? INDEX_ALIASES[upper.replace(/\s+/g, "")];
+	if (alias) return { display: alias.label, yahoo: alias.yahoo, isIndex: true };
+
+	const symbol = normalizeSymbol(input);
+	return { display: symbol, yahoo: toYahooSymbol(symbol), isIndex: false };
 }
 
 /**
@@ -170,13 +212,13 @@ export async function fetchChart(yahooSymbol: string): Promise<YahooChartRespons
 
 /** Fetch a quote straight from upstream, bypassing any cache. */
 export async function fetchQuote(symbol: string): Promise<Quote> {
-	const display = normalizeSymbol(symbol);
-	const yahoo = toYahooSymbol(display);
+	const { display, yahoo } = resolveSymbol(symbol);
 	return mapQuote(await fetchChart(yahoo), display, yahoo);
 }
 
 /**
- * Fetch a quote for a plain NSE symbol (the ".NS" suffix is added internally),
+ * Fetch a quote for an NSE stock (".NS" is added internally) or a supported
+ * index alias (NIFTY / NIFTY 50 → ^NSEI, BANKNIFTY / NIFTY BANK → ^NSEBANK),
  * served from KV when fresh. TTL is 60s while NSE trades and 15 minutes
  * otherwise. Pass `store: null` to bypass caching.
  *
@@ -188,8 +230,7 @@ export async function getQuote(
 	symbol: string,
 	now: Date = new Date(),
 ): Promise<Cached<Quote>> {
-	const display = normalizeSymbol(symbol);
-	const yahoo = toYahooSymbol(display);
+	const { display, yahoo } = resolveSymbol(symbol);
 	return withCache(
 		store,
 		cacheKey.quote(display),

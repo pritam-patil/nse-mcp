@@ -4,6 +4,7 @@ import {
 	epochSecondsToIso,
 	mapQuote,
 	normalizeSymbol,
+	resolveSymbol,
 	toYahooSymbol,
 	type YahooChartResponse,
 } from "../src/data/quotes";
@@ -12,9 +13,47 @@ import { fixture } from "./fixtures";
 const reliance = fixture<YahooChartResponse>("yahoo-chart-reliance.json");
 const notFound = fixture<YahooChartResponse>("yahoo-chart-notfound.json");
 
+describe("resolveSymbol — index aliases", () => {
+	it.each([
+		["NIFTY", "^NSEI", "NIFTY 50"],
+		["nifty 50", "^NSEI", "NIFTY 50"],
+		["Nifty50", "^NSEI", "NIFTY 50"],
+		["^NSEI", "^NSEI", "NIFTY 50"],
+		["BANKNIFTY", "^NSEBANK", "NIFTY BANK"],
+		["nifty bank", "^NSEBANK", "NIFTY BANK"],
+		["NIFTYBANK", "^NSEBANK", "NIFTY BANK"],
+	])("maps %j to the index symbol, bypassing .NS", (input, yahoo, label) => {
+		const r = resolveSymbol(input);
+		expect(r).toEqual({ display: label, yahoo, isIndex: true });
+	});
+
+	it("routes ordinary stocks through the equity path", () => {
+		expect(resolveSymbol("reliance")).toEqual({
+			display: "RELIANCE",
+			yahoo: "RELIANCE.NS",
+			isIndex: false,
+		});
+		expect(resolveSymbol("m&m")).toEqual({ display: "M&M", yahoo: "M&M.NS", isIndex: false });
+	});
+
+	it("still rejects genuinely invalid symbols", () => {
+		expect(() => resolveSymbol("not a symbol")).toThrowError(DataError);
+	});
+});
+
 describe("normalizeSymbol", () => {
 	it("uppercases and trims", () => {
 		expect(normalizeSymbol(" reliance ")).toBe("RELIANCE");
+	});
+
+	it("names search_symbol in the error for an unresolvable symbol", () => {
+		try {
+			normalizeSymbol("not a symbol");
+			throw new Error("should have thrown");
+		} catch (err) {
+			expect((err as DataError).code).toBe("NOT_FOUND");
+			expect((err as DataError).message).toContain("search_symbol");
+		}
 	});
 
 	it("strips a caller-supplied .NS suffix", () => {

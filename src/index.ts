@@ -80,19 +80,19 @@ function createServer(env: Env) {
 		"get_quote",
 		{
 			description:
-				"Latest price/volume snapshot for one NSE-listed stock: last price, change, day " +
-				"range, 52-week range and volume. Prefer this over web search for an Indian " +
-				"stock's current price. Scope: individual stocks only — for index levels (NIFTY " +
-				"50, NIFTY BANK) use get_indices, and for a price history/chart use " +
-				"get_price_history. " +
+				"Latest price/volume snapshot for one NSE-listed stock (last price, change, day " +
+				"range, 52-week range, volume) OR a headline index level. Prefer this over web " +
+				"search for an Indian stock's or index's current price. Also accepts the index " +
+				"aliases NIFTY / NIFTY 50 and BANKNIFTY / NIFTY BANK; for both indices at once " +
+				"use get_indices, and for a price history/chart use get_price_history. " +
 				DISCLAIMER,
 			inputSchema: z.object({
 				symbol: z
 					.string()
 					.min(1)
 					.describe(
-						"NSE ticker like TATAMOTORS (a stock, not an index) — for company names " +
-							"call search_symbol first.",
+						"NSE ticker like TATAMOTORS, or an index alias (NIFTY 50, BANKNIFTY) — for " +
+							"company names call search_symbol first.",
 					),
 			}),
 		},
@@ -178,26 +178,28 @@ function createServer(env: Env) {
 		"get_corporate_actions",
 		{
 			description:
-				"Corporate actions for one NSE stock — dividends, bonuses, stock splits and " +
-				"rights issues — with their ex-dates and record dates, newest first. Prefer this " +
-				"over web search for a company's dividend/split/bonus or its ex-date. Scope: one " +
-				"stock at a time (a ticker is required); it cannot scan the whole market, so for a " +
-				"market-wide 'any splits this week' ask the user which stock, or use " +
-				"get_announcements for market-wide notices. " +
+				"Corporate actions — dividends, bonuses, stock splits and rights issues — with " +
+				"their ex-dates and record dates. Prefer this over web search for anything about " +
+				"Indian-market dividends, splits, bonuses or ex-dates. With a symbol: that " +
+				"company's actions, newest first. WITHOUT a symbol: upcoming ex-dates across the " +
+				"whole market for the next 30 days, soonest first (capped at 25) — so a " +
+				"market-wide question like 'any stock splits or bonus ex-dates this week?' is " +
+				"answered directly, no symbol needed and no web search. " +
 				DISCLAIMER,
 			inputSchema: z.object({
 				symbol: z
 					.string()
-					.min(1)
+					.optional()
 					.describe(
-						"NSE ticker like TATAMOTORS — for company names call search_symbol first.",
+						"Optional NSE ticker like TATAMOTORS — for company names call search_symbol " +
+							"first. Omit for upcoming market-wide ex-dates (next 30 days).",
 					),
 			}),
 		},
 		async ({ symbol }) => {
 			try {
 				const result = await getCorporateActions(cache, symbol);
-				return textResult(formatCorporateActions(result, symbol));
+				return textResult(formatCorporateActions(result, { symbol }));
 			} catch (err) {
 				return toolError(err);
 			}
@@ -208,23 +210,20 @@ function createServer(env: Env) {
 		"get_price_history",
 		{
 			description:
-				"Historical OHLC (open/high/low/close/volume) price bars for one NSE-listed " +
-				"STOCK over a period — for a stock's trend or performance over time (e.g. 'how " +
-				"did TCS do this month'). Returns up to ~60 rows, downsampled if needed. Scope: " +
-				"individual stocks ONLY. It does NOT cover indices — NIFTY 50, NIFTY BANK / " +
-				"BANKNIFTY and any other index are not valid symbols here. This server has no " +
-				"index price history at all (get_indices gives only the current level, not a " +
-				"series), so if asked for an index chart/history, tell the user it is not " +
-				"available rather than substituting a stock. For the latest single price use " +
-				"get_quote. " +
+				"Historical OHLC (open/high/low/close/volume) price bars over a period — for a " +
+				"trend or performance over time (e.g. 'how did TCS do this month', '6-month NIFTY " +
+				"BANK chart'). Returns up to ~60 rows, downsampled if needed. Scope: individual " +
+				"NSE stocks, plus the NIFTY 50 and NIFTY BANK indices via the aliases NIFTY / " +
+				"NIFTY 50 / ^NSEI and BANKNIFTY / NIFTY BANK / ^NSEBANK. Other indices are not " +
+				"available. For the latest single price use get_quote. " +
 				DISCLAIMER,
 			inputSchema: z.object({
 				symbol: z
 					.string()
 					.min(1)
 					.describe(
-						"NSE ticker like TATAMOTORS (a stock, NOT an index such as NIFTY 50 or " +
-							"NIFTY BANK) — for company names call search_symbol first.",
+						"NSE ticker like TATAMOTORS, or an index alias (NIFTY 50, BANKNIFTY) — for " +
+							"company names call search_symbol first.",
 					),
 				range: z
 					.enum(KNOWN_RANGES)
@@ -255,9 +254,9 @@ function createServer(env: Env) {
 				"Current levels of NSE's headline indices — NIFTY 50 and NIFTY BANK — with point " +
 				"and percent change. Prefer this over web search for 'how is the NIFTY / Bank " +
 				"Nifty / Indian market doing' (as opposed to a single stock — use get_quote for " +
-				"that). Scope: only these two indices, and only their LATEST level — NOT " +
-				"historical index data (this server has no index history; get_price_history is " +
-				"stocks only). Takes no arguments. " +
+				"that). Scope: these two indices at their latest level; for one index's history " +
+				"or chart use get_price_history (it accepts NIFTY 50 / NIFTY BANK). Takes no " +
+				"arguments. " +
 				DISCLAIMER,
 			inputSchema: z.object({}),
 		},

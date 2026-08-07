@@ -131,26 +131,32 @@ export function formatAnnouncements(
 	return compose(lines, asOf, result.stale);
 }
 
-/** Corporate actions: type, purpose, ex-date and record date per item, newest first. */
+/**
+ * Corporate actions: type, purpose, ex-date and record date per item.
+ *
+ * With a `symbol`, this is one company's actions (newest first). Without one, it
+ * is the market-wide upcoming view (soonest first), so each line is prefixed
+ * with the company's symbol.
+ */
 export function formatCorporateActions(
 	result: Cached<CorporateActionsResult>,
-	symbol: string,
+	opts: { symbol?: string } = {},
 ): string {
 	const asOf = asOfFrom(result.cachedAt);
 	const actions = result.actions.slice(0, MAX_LIST_ITEMS);
 	if (actions.length === 0) {
-		return compose(
-			[`No recent corporate actions for ${symbol.toUpperCase()}.`],
-			asOf,
-			result.stale,
-		);
+		const msg = opts.symbol
+			? `No recent corporate actions for ${opts.symbol.toUpperCase()}.`
+			: "No upcoming corporate actions (ex-dates) in the next 30 days.";
+		return compose([msg], asOf, result.stale);
 	}
 
 	const lines = actions.map((a) => {
+		const who = !opts.symbol && a.symbol ? `${a.symbol}: ` : "";
 		const subject = a.subject ?? a.type;
 		const ex = a.exDate ? `ex-date ${a.exDate}` : "ex-date n/a";
 		const rec = a.recordDate ? `, record ${a.recordDate}` : "";
-		return `${a.type}: ${subject} (${ex}${rec})`;
+		return `${who}${a.type}: ${subject} (${ex}${rec})`;
 	});
 	return compose(lines, asOf, result.stale);
 }
