@@ -2,6 +2,8 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
 import {
+	getAnnouncements,
+	getCorporateActions,
 	getIndices,
 	getMarketStatus,
 	getQuote,
@@ -10,7 +12,20 @@ import {
 	kvCache,
 	refreshSymbols,
 } from "./data";
-import { formatIndices, formatMarketStatus, formatQuote, formatSymbolMatches } from "./format";
+import {
+	formatAnnouncements,
+	formatCorporateActions,
+	formatIndices,
+	formatMarketStatus,
+	formatQuote,
+	formatSymbolMatches,
+} from "./format";
+
+/** Clamp a caller-supplied limit into [1, max] with a default. */
+function clampLimit(value: number | undefined, fallback: number, max: number): number {
+	if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+	return Math.min(Math.max(Math.trunc(value), 1), max);
+}
 
 const SERVER_INSTRUCTIONS =
 	"NSE (National Stock Exchange of India) market data. Informational market data " +
@@ -102,6 +117,60 @@ function createServer(env: Env) {
 		async ({ query }) => {
 			try {
 				return textResult(formatSymbolMatches(await getSymbolMatches(cache, query), query));
+			} catch (err) {
+				return toolError(err);
+			}
+		},
+	);
+
+	server.registerTool(
+		"get_announcements",
+		{
+			description:
+				"Recent NSE corporate announcements (filings, board meetings, results, press " +
+				"releases), newest first, each with date, headline and a link to the filing. Pass " +
+				"a symbol for one company's announcements, or omit it for the latest across the " +
+				"whole market. Use when asked what a company has announced or filed lately.",
+			inputSchema: z.object({
+				symbol: z
+					.string()
+					.optional()
+					.describe(
+						"Optional NSE symbol, e.g. RELIANCE. Omit for market-wide announcements.",
+					),
+				limit: z
+					.number()
+					.int()
+					.optional()
+					.describe("How many to return (default 10, max 25)."),
+			}),
+		},
+		async ({ symbol, limit }) => {
+			try {
+				const n = clampLimit(limit, 10, 25);
+				const result = await getAnnouncements(cache, { symbol, limit: n });
+				return textResult(formatAnnouncements(result, { symbol }));
+			} catch (err) {
+				return toolError(err);
+			}
+		},
+	);
+
+	server.registerTool(
+		"get_corporate_actions",
+		{
+			description:
+				"Corporate actions for one NSE stock — dividends, bonuses, stock splits, rights " +
+				"issues — with their ex-dates and record dates, newest first. Use when asked about " +
+				"a company's dividend, bonus, split, or upcoming/past ex-date.",
+			inputSchema: z.object({
+				symbol: z.string().min(1).describe("NSE stock symbol, e.g. RELIANCE, TCS, ITC"),
+			}),
+		},
+		async ({ symbol }) => {
+			try {
+				const result = await getCorporateActions(cache, symbol);
+				return textResult(formatCorporateActions(result, symbol));
 			} catch (err) {
 				return toolError(err);
 			}
