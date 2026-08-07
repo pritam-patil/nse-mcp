@@ -11,6 +11,7 @@ import type {
 	IndexKey,
 	IndicesResult,
 	MarketStatus,
+	PriceHistory,
 	Quote,
 	SymbolEntry,
 } from "./data";
@@ -59,6 +60,17 @@ export function istTimestamp(iso: string | null | undefined): string | null {
 	const hh = String(ist.getUTCHours()).padStart(2, "0");
 	const mm = String(ist.getUTCMinutes()).padStart(2, "0");
 	return `${dd}-${mon}-${yyyy} ${hh}:${mm} IST`;
+}
+
+/** Epoch seconds → IST parts, sharing the offset trick with istTimestamp. */
+function istParts(epochSeconds: number): { date: string; time: string } {
+	const ist = new Date(epochSeconds * 1000 + IST_OFFSET_MINUTES * 60_000);
+	const dd = String(ist.getUTCDate()).padStart(2, "0");
+	const mon = MONTHS[ist.getUTCMonth()];
+	const yyyy = ist.getUTCFullYear();
+	const hh = String(ist.getUTCHours()).padStart(2, "0");
+	const mm = String(ist.getUTCMinutes()).padStart(2, "0");
+	return { date: `${dd}-${mon}-${yyyy}`, time: `${hh}:${mm}` };
 }
 
 /** Compose body lines, a possible stale note, and the trailing "as of" line. */
@@ -121,6 +133,37 @@ export function formatCorporateActions(
 		lines.push("Note: stale — upstream unavailable, showing last cached value.");
 	}
 	return lines.join("\n");
+}
+
+/** Historical OHLC series: a header, one compact row per bar, oldest to newest. */
+export function formatPriceHistory(h: Cached<PriceHistory>): string {
+	const currency = h.currency ?? "INR";
+	const header =
+		`${h.symbol} — ${h.range} @ ${h.interval}` +
+		(h.downsampledFrom ? ` (${h.downsampledFrom} bars downsampled to ${h.rows.length})` : "") +
+		` — OHLC in ${currency}`;
+
+	if (h.rows.length === 0) {
+		return compose([header, "No price data for this range."], "unknown", h.stale);
+	}
+
+	const rows = h.rows.map((r) => {
+		const { date, time } = istParts(r.t);
+		const when = h.intraday ? `${date} ${time}` : date;
+		const cells = [
+			`O ${r.open !== null ? num(r.open) : "n/a"}`,
+			`H ${r.high !== null ? num(r.high) : "n/a"}`,
+			`L ${r.low !== null ? num(r.low) : "n/a"}`,
+			`C ${r.close !== null ? num(r.close) : "n/a"}`,
+			`V ${r.volume !== null ? num(r.volume, 0) : "n/a"}`,
+		];
+		return `${when}  ${cells.join("  ")}`;
+	});
+
+	const last = h.rows[h.rows.length - 1];
+	const { date, time } = istParts(last.t);
+	const asOf = `${date}${h.intraday ? ` ${time}` : ""} IST`;
+	return compose([header, ...rows], asOf, h.stale);
 }
 
 /** One NSE equity quote. */
