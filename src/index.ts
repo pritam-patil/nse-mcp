@@ -1,7 +1,12 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
-import { getMarketStatus, isDataError, kvCache } from "./data";
+import { getIndices, getMarketStatus, getQuote, isDataError, kvCache } from "./data";
+import { formatIndices, formatMarketStatus, formatQuote } from "./format";
+
+const SERVER_INSTRUCTIONS =
+	"NSE (National Stock Exchange of India) market data. Informational market data " +
+	"only — not investment advice; data may be delayed.";
 
 /** Render a thrown DataError as a tool error the model can reason about. */
 function toolError(err: unknown) {
@@ -9,31 +14,79 @@ function toolError(err: unknown) {
 	const message = err instanceof Error ? err.message : String(err);
 	return {
 		isError: true,
-		content: [{ type: "text" as const, text: JSON.stringify({ error: code, message }) }],
+		content: [{ type: "text" as const, text: `Error (${code}): ${message}` }],
 	};
+}
+
+/** Wrap a formatted string as a successful tool result. */
+function textResult(text: string) {
+	return { content: [{ type: "text" as const, text }] };
 }
 
 function createServer(env: Env) {
 	const cache = kvCache(env.CACHE);
 
-	const server = new McpServer({
-		name: "nse-data",
-		version: "1.0.0",
-	});
+	const server = new McpServer(
+		{ name: "nse-data", version: "1.0.0" },
+		{ instructions: SERVER_INSTRUCTIONS },
+	);
 
 	server.registerTool(
 		"get_market_status",
 		{
 			description:
-				"Get the current trading status of the NSE market. Returns the headline status " +
-				"(open/closed) from the Capital Market segment, plus per-segment detail. " +
-				"`stale: true` means the upstream was unreachable and this is the last known value.",
+				"Whether the NSE (India's National Stock Exchange) is currently open or closed " +
+				"for trading. Call when asked if the Indian market / NSE is open, or for the " +
+				"NIFTY 50 level at last close. Covers all segments (Capital Market, Currency, " +
+				"Commodity, Debt). Takes no arguments.",
 			inputSchema: z.object({}),
 		},
 		async () => {
 			try {
-				const status = await getMarketStatus(cache);
-				return { content: [{ type: "text" as const, text: JSON.stringify(status) }] };
+				return textResult(formatMarketStatus(await getMarketStatus(cache)));
+			} catch (err) {
+				return toolError(err);
+			}
+		},
+	);
+
+	server.registerTool(
+		"get_quote",
+		{
+			description:
+				"Latest NSE price/volume snapshot for one Indian stock symbol like RELIANCE or " +
+				"TCS. Returns last price, change, day range, 52-week range and volume. Use the " +
+				"plain NSE symbol without any suffix (RELIANCE, not RELIANCE.NS). For index " +
+				"levels like NIFTY 50 use get_indices instead.",
+			inputSchema: z.object({
+				symbol: z
+					.string()
+					.min(1)
+					.describe("NSE stock symbol, e.g. RELIANCE, TCS, INFY, HDFCBANK"),
+			}),
+		},
+		async ({ symbol }) => {
+			try {
+				return textResult(formatQuote(await getQuote(cache, symbol)));
+			} catch (err) {
+				return toolError(err);
+			}
+		},
+	);
+
+	server.registerTool(
+		"get_indices",
+		{
+			description:
+				"Current levels of NSE's headline indices — NIFTY 50 and NIFTY BANK — with " +
+				"point and percent change. Call when asked how the Indian market / NIFTY / Bank " +
+				"Nifty is doing overall, as opposed to a single stock (use get_quote for that). " +
+				"Takes no arguments.",
+			inputSchema: z.object({}),
+		},
+		async () => {
+			try {
+				return textResult(formatIndices(await getIndices(cache)));
 			} catch (err) {
 				return toolError(err);
 			}
