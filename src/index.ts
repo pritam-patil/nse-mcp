@@ -6,9 +6,12 @@ import {
 	getCorporateActions,
 	getIndices,
 	getMarketStatus,
+	getPriceHistory,
 	getQuote,
 	getSymbolMatches,
 	isDataError,
+	KNOWN_INTERVALS,
+	KNOWN_RANGES,
 	kvCache,
 	refreshSymbols,
 } from "./data";
@@ -17,6 +20,7 @@ import {
 	formatCorporateActions,
 	formatIndices,
 	formatMarketStatus,
+	formatPriceHistory,
 	formatQuote,
 	formatSymbolMatches,
 } from "./format";
@@ -171,6 +175,38 @@ function createServer(env: Env) {
 			try {
 				const result = await getCorporateActions(cache, symbol);
 				return textResult(formatCorporateActions(result, symbol));
+			} catch (err) {
+				return toolError(err);
+			}
+		},
+	);
+
+	server.registerTool(
+		"get_price_history",
+		{
+			description:
+				"Historical OHLC (open/high/low/close/volume) price bars for one NSE stock over a " +
+				"period. Use for trends or comparing performance over time (e.g. 'how did TCS do " +
+				"this month', 'RELIANCE over the last year'). Returns up to ~60 rows, downsampled " +
+				"if needed. For the latest single price use get_quote instead.",
+			inputSchema: z.object({
+				symbol: z.string().min(1).describe("NSE stock symbol, e.g. RELIANCE, TCS"),
+				range: z
+					.enum(KNOWN_RANGES)
+					.optional()
+					.describe("Look-back period (default 1mo). One of: " + KNOWN_RANGES.join(", ")),
+				interval: z
+					.enum(KNOWN_INTERVALS)
+					.optional()
+					.describe(
+						"Bar size (default 1d). Fine intervals (1m–90m) only work for short ranges.",
+					),
+			}),
+		},
+		async ({ symbol, range, interval }) => {
+			try {
+				const history = await getPriceHistory(cache, symbol, range, interval);
+				return textResult(formatPriceHistory(history));
 			} catch (err) {
 				return toolError(err);
 			}

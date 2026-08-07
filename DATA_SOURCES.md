@@ -85,9 +85,15 @@ Fields: `symbol`, `sm_name`, `desc`, `an_dt`, `sort_date`, `attchmntText`, `attc
 
 Same endpoint; `meta.validRanges` and `dataGranularity` advertise what is supported. Not separately probed in this spike.
 
-### 5. Corporate actions → **NSE `/api/corporates-corporateActions`** (probed Burse 7)
+### 5. Corporate actions → **NSE `/api/corporates-corporateActions`** (probed Burse 7, re-probed from the Worker Burse 8)
 
-Reachable and returning data, from both a residential IP and the Worker. Per-symbol (`?index=equities&symbol=RELIANCE`) it returns ~20 records, newest first, ~6KB. Fields: `symbol`, `comp`, `subject` (free text, e.g. "Dividend - Rs 6 Per Share", "Bonus 1:1", "Rights 1:15 @ Premium Rs 1247", "Demerger"), `exDate`, `recDate`, `series`, `faceVal`, `isin`, plus book-closure (`bcStartDate`/`bcEndDate`) and no-delivery (`ndStartDate`/`ndEndDate`) windows, with `-` as the absent-date placeholder. Dates are date-only `dd-Mon-yyyy`. Action type has to be inferred from the `subject` text — there is no type field.
+Reachable and returning data. Per-symbol (`?index=equities&symbol=RELIANCE`) it returns ~20 records, newest first, ~6KB. Fields: `symbol`, `comp`, `subject` (free text, e.g. "Dividend - Rs 6 Per Share", "Bonus 1:1", "Rights 1:15 @ Premium Rs 1247", "Demerger"), `exDate`, `recDate`, `series`, `faceVal`, `isin`, plus book-closure (`bcStartDate`/`bcEndDate`) and no-delivery (`ndStartDate`/`ndEndDate`) windows, with `-` as the absent-date placeholder. Dates are date-only `dd-Mon-yyyy`. Action type has to be inferred from the `subject` text — there is no type field.
+
+**Worker-egress probe (Burse 8):** re-checked from Cloudflare egress the same way the original spike checked its siblings (browser UA + Referer, via a `wrangler dev --remote` fetcher). Result: **HTTP 200, 20 valid records** for RELIANCE — corporate actions is reachable from the deployment environment, not just from a residential IP. So unlike NSE `quote-equity` (403 everywhere), this endpoint works from the Worker. `get_corporate_actions` is therefore live.
+
+### 6. Historical OHLC → **Yahoo chart v8** `?range=&interval=` (built Burse 8)
+
+The chart endpoint carries `timestamp[]` and `indicators.quote[0].{open,high,low,close,volume[]}`. `meta.validRanges` lists the accepted ranges; `meta.dataGranularity` reports the granularity actually returned. Valid range/interval combos are constrained (minute granularities only reach back days, not years — e.g. `1m` ≈ 7 days) — Yahoo rejects bad combos, and `get_price_history` also validates up front. Bars with a null close (holidays/halts) appear and are dropped. Results are capped at ~60 rows (downsampled). Cached for 1 hour, since historical series change slowly.
 
 ### Per-symbol announcements have a full-history footgun
 

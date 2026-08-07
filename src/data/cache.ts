@@ -16,6 +16,9 @@ export const TTL_MARKET_HOURS_SECONDS = 60;
 /** Refresh interval outside trading hours, and for indices and announcements. */
 export const TTL_DEFAULT_SECONDS = 15 * 60;
 
+/** TTL for historical price series — they change slowly, so cache for an hour. */
+export const TTL_HISTORY_SECONDS = 60 * 60;
+
 /** How long an entry survives in KV so it can still be served stale. */
 export const STALE_RETENTION_SECONDS = 7 * 24 * 60 * 60;
 
@@ -52,6 +55,8 @@ export const cacheKey = {
 	announcements: (symbol?: string) =>
 		symbol ? `v1:announcements:sym:${symbol}` : "v1:announcements:equities",
 	corporateActions: (symbol: string) => `v1:corpactions:${symbol}`,
+	history: (symbol: string, range: string, interval: string) =>
+		`v1:history:${symbol}:${range}:${interval}`,
 	status: () => "v1:status",
 	symbols: () => "v1:symbols",
 };

@@ -15,6 +15,7 @@ export {
 	STALE_RETENTION_SECONDS,
 	statusTtlSeconds,
 	TTL_DEFAULT_SECONDS,
+	TTL_HISTORY_SECONDS,
 	TTL_MARKET_HOURS_SECONDS,
 	withCache,
 	type Cached,
@@ -85,6 +86,23 @@ export {
 } from "./corporate-actions";
 
 export { parseNseDate } from "./dates";
+
+export {
+	DEFAULT_INTERVAL,
+	DEFAULT_RANGE,
+	downsample,
+	fetchHistory,
+	getPriceHistory,
+	KNOWN_INTERVALS,
+	KNOWN_RANGES,
+	mapHistory,
+	MAX_ROWS,
+	validateRangeInterval,
+	type Interval,
+	type OhlcRow,
+	type PriceHistory,
+	type Range,
+} from "./price-history";
 
 export {
 	EQUITY_L_URL,
