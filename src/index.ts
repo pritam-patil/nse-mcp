@@ -80,19 +80,19 @@ function createServer(env: Env) {
 		"get_quote",
 		{
 			description:
-				"Latest price/volume snapshot for one NSE-listed stock (last price, change, day " +
-				"range, 52-week range, volume) OR a headline index level. Prefer this over web " +
-				"search for an Indian stock's or index's current price. Also accepts the index " +
-				"aliases NIFTY / NIFTY 50 and BANKNIFTY / NIFTY BANK; for both indices at once " +
-				"use get_indices, and for a price history/chart use get_price_history. " +
+				"Latest price/volume snapshot for one NSE-listed stock: last price, change, day " +
+				"range, 52-week range and volume. Prefer this over web search for an Indian " +
+				"stock's current price. Scope: individual stocks only — for index levels (NIFTY " +
+				"50, NIFTY BANK) use get_indices, and for a price history/chart use " +
+				"get_price_history. " +
 				DISCLAIMER,
 			inputSchema: z.object({
 				symbol: z
 					.string()
 					.min(1)
 					.describe(
-						"NSE ticker like TATAMOTORS, or an index alias (NIFTY 50, BANKNIFTY) — for " +
-							"company names call search_symbol first.",
+						"NSE ticker like TATAMOTORS (a stock, not an index) — for company names " +
+							"call search_symbol first.",
 					),
 			}),
 		},

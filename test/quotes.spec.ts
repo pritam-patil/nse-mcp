@@ -4,6 +4,7 @@ import {
 	epochSecondsToIso,
 	mapQuote,
 	normalizeSymbol,
+	resolveStockSymbol,
 	resolveSymbol,
 	toYahooSymbol,
 	type YahooChartResponse,
@@ -38,6 +39,37 @@ describe("resolveSymbol — index aliases", () => {
 
 	it("still rejects genuinely invalid symbols", () => {
 		expect(() => resolveSymbol("not a symbol")).toThrowError(DataError);
+	});
+});
+
+describe("resolveStockSymbol — quote path redirects indices", () => {
+	it.each(["NIFTY", "NIFTY 50", "BANKNIFTY", "nifty bank", "^NSEI"])(
+		"redirects index alias %j to get_indices",
+		(alias) => {
+			try {
+				resolveStockSymbol(alias);
+				throw new Error("should have thrown");
+			} catch (err) {
+				expect((err as DataError).code).toBe("NOT_FOUND");
+				expect((err as DataError).message).toContain("get_indices");
+			}
+		},
+	);
+
+	it("resolves ordinary stocks normally", () => {
+		expect(resolveStockSymbol("reliance")).toEqual({
+			display: "RELIANCE",
+			yahoo: "RELIANCE.NS",
+		});
+	});
+
+	it("rejects invalid symbols pointing at search_symbol", () => {
+		try {
+			resolveStockSymbol("not a symbol");
+			throw new Error("should have thrown");
+		} catch (err) {
+			expect((err as DataError).message).toContain("search_symbol");
+		}
 	});
 });
 

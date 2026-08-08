@@ -134,21 +134,46 @@ export type ResolvedSymbol = {
 	isIndex: boolean;
 };
 
+/** Return the index this input aliases (NIFTY 50 / NIFTY BANK), or null. */
+export function lookupIndexAlias(input: string): { yahoo: string; label: string } | null {
+	const upper = (input ?? "").trim().toUpperCase().replace(/\.NS$/, "");
+	return INDEX_ALIASES[upper] ?? INDEX_ALIASES[upper.replace(/\s+/g, "")] ?? null;
+}
+
 /**
  * Resolve a caller symbol to what we display and what we query upstream.
  *
  * Index aliases (NIFTY, NIFTY 50, BANKNIFTY, NIFTY BANK, and the raw ^ symbols)
  * resolve to ^NSEI / ^NSEBANK, bypassing .NS suffixing and stock-symbol
  * validation. Everything else goes through the equity path (uppercase, strip
- * .NS, validate the stock charset).
+ * .NS, validate the stock charset). Used where indices are in scope (price
+ * history); the quote path uses {@link resolveStockSymbol}, which redirects
+ * indices to get_indices instead.
  */
 export function resolveSymbol(input: string): ResolvedSymbol {
-	const upper = (input ?? "").trim().toUpperCase().replace(/\.NS$/, "");
-	const alias = INDEX_ALIASES[upper] ?? INDEX_ALIASES[upper.replace(/\s+/g, "")];
+	const alias = lookupIndexAlias(input);
 	if (alias) return { display: alias.label, yahoo: alias.yahoo, isIndex: true };
 
 	const symbol = normalizeSymbol(input);
 	return { display: symbol, yahoo: toYahooSymbol(symbol), isIndex: false };
+}
+
+/**
+ * Resolve a stock symbol for the quote path. Index aliases are recognised only
+ * to redirect the caller to get_indices, so index levels have one unambiguous
+ * home; everything else goes through the equity path.
+ */
+export function resolveStockSymbol(input: string): { display: string; yahoo: string } {
+	const alias = lookupIndexAlias(input);
+	if (alias) {
+		throw new DataError(
+			"NOT_FOUND",
+			`${alias.label} is an index, not a stock — use get_indices for its current level, or get_price_history for its history.`,
+			{ source: SOURCE },
+		);
+	}
+	const symbol = normalizeSymbol(input);
+	return { display: symbol, yahoo: toYahooSymbol(symbol) };
 }
 
 /**
@@ -212,25 +237,25 @@ export async function fetchChart(yahooSymbol: string): Promise<YahooChartRespons
 
 /** Fetch a quote straight from upstream, bypassing any cache. */
 export async function fetchQuote(symbol: string): Promise<Quote> {
-	const { display, yahoo } = resolveSymbol(symbol);
+	const { display, yahoo } = resolveStockSymbol(symbol);
 	return mapQuote(await fetchChart(yahoo), display, yahoo);
 }
 
 /**
- * Fetch a quote for an NSE stock (".NS" is added internally) or a supported
- * index alias (NIFTY / NIFTY 50 → ^NSEI, BANKNIFTY / NIFTY BANK → ^NSEBANK),
- * served from KV when fresh. TTL is 60s while NSE trades and 15 minutes
- * otherwise. Pass `store: null` to bypass caching.
+ * Fetch a quote for an NSE stock (".NS" is added internally), served from KV
+ * when fresh. TTL is 60s while NSE trades and 15 minutes otherwise. Pass
+ * `store: null` to bypass caching.
  *
- * An unusable symbol throws before the cache is touched, so junk input never
- * occupies a key.
+ * Index aliases (NIFTY 50, NIFTY BANK) are rejected with a pointer to
+ * get_indices — index levels live there, not here. An unusable symbol throws
+ * before the cache is touched, so junk input never occupies a key.
  */
 export async function getQuote(
 	store: CacheStore | null,
 	symbol: string,
 	now: Date = new Date(),
 ): Promise<Cached<Quote>> {
-	const { display, yahoo } = resolveSymbol(symbol);
+	const { display, yahoo } = resolveStockSymbol(symbol);
 	return withCache(
 		store,
 		cacheKey.quote(display),
