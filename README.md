@@ -91,7 +91,7 @@ npm run refresh-symbols                  # seed the symbol list (cron refreshes 
 
 `npm run dev` serves it locally at `http://localhost:8787/mcp`; `npm test` runs ~320 unit tests against recorded fixtures, no network needed.
 
-**Free-tier note:** the whole thing fits comfortably in Cloudflare's free plan — Workers free tier allows 100k requests/day, and the KV cache means most tool calls never touch an upstream. There is no billing surprise lurking in this repo.
+**Free-tier note:** the whole thing fits comfortably in Cloudflare's free plan — Workers free tier allows 100k requests/day, and the KV cache means most tool calls never touch an upstream. The hosted instance is limited to **60 tool calls per hour per IP** (you'll get a friendly message, not an error), and per-tool usage is logged to Workers Analytics Engine as anonymous `tool × cache-hit/miss` counts — no request contents, no IPs. There is no billing surprise lurking in this repo.
 
 ## How this compares
 

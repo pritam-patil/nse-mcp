@@ -79,7 +79,12 @@ describe("withCache — hits and misses", () => {
 
 		const result = await withCache(store, "v1:quote:X", 60, fetcher, { now: NOW });
 
-		expect(result).toEqual({ price: 100, stale: false, cachedAt: NOW.toISOString() });
+		expect(result).toEqual({
+			price: 100,
+			stale: false,
+			cachedAt: NOW.toISOString(),
+			cacheHit: false,
+		});
 		expect(fetcher).toHaveBeenCalledTimes(1);
 		expect(puts).toHaveLength(1);
 	});
@@ -97,7 +102,7 @@ describe("withCache — hits and misses", () => {
 
 		const result = await withCache(store, "k", 60, fetcher, { now: NOW });
 
-		expect(result).toEqual({ price: 42, stale: false, cachedAt: ago(30) });
+		expect(result).toEqual({ price: 42, stale: false, cachedAt: ago(30), cacheHit: true });
 		expect(fetcher).not.toHaveBeenCalled();
 	});
 
@@ -115,7 +120,12 @@ describe("withCache — hits and misses", () => {
 	it("bypasses caching entirely when the store is null", async () => {
 		const fetcher = vi.fn(async () => ({ price: 1 }));
 		const result = await withCache(null, "k", 60, fetcher, { now: NOW });
-		expect(result).toEqual({ price: 1, stale: false, cachedAt: NOW.toISOString() });
+		expect(result).toEqual({
+			price: 1,
+			stale: false,
+			cachedAt: NOW.toISOString(),
+			cacheHit: false,
+		});
 		expect(fetcher).toHaveBeenCalledTimes(1);
 	});
 });
@@ -129,7 +139,7 @@ describe("withCache — stale on upstream failure", () => {
 
 		const result = await withCache(store, "k", 60, fetcher, { now: NOW });
 
-		expect(result).toEqual({ price: 42, stale: true, cachedAt: ago(3600) });
+		expect(result).toEqual({ price: 42, stale: true, cachedAt: ago(3600), cacheHit: true });
 	});
 
 	it("serves stale however old the entry is", async () => {

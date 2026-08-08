@@ -18,6 +18,16 @@
 			"id": "91ae66870ba947c79b6ca124227f4a86",
 		},
 	],
+	// Requires one-time enablement of Workers Analytics Engine in the dashboard:
+	// https://dash.cloudflare.com/5252ee9891a8fdede1b1037a8451c6e5/workers/analytics-engine
+	// Until then `wrangler deploy` rejects this binding (code 10089); the Worker
+	// code degrades gracefully when the binding is absent (env.USAGE optional).
+	"analytics_engine_datasets": [
+		{
+			"binding": "USAGE",
+			"dataset": "nse_mcp_usage",
+		},
+	],
 	"triggers": {
 		// Weekly refresh of the EQUITY_L symbol list: Mondays 01:00 UTC (06:30 IST),
 		// before the trading week. (Cloudflare cron uses day-of-week 1-7, not 0-6.)

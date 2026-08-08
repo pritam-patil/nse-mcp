@@ -43,6 +43,12 @@ export type CacheMeta = {
 	stale: boolean;
 	/** When the served value was fetched, ISO 8601; null if never cached. */
 	cachedAt: string | null;
+	/**
+	 * True when served from a fresh cache entry without contacting upstream.
+	 * (Stale fallbacks also come from cache, but are flagged by `stale`.)
+	 * Optional so hand-built results and old stored envelopes stay valid.
+	 */
+	cacheHit?: boolean;
 };
 
 export type Cached<T> = T & CacheMeta;
@@ -126,7 +132,7 @@ export async function withCache<T extends object>(
 	if (entry) {
 		const ageSeconds = (now.getTime() - Date.parse(entry.storedAt)) / 1000;
 		if (ageSeconds >= 0 && ageSeconds < ttlSeconds) {
-			return { ...entry.data, stale: false, cachedAt: entry.storedAt };
+			return { ...entry.data, stale: false, cachedAt: entry.storedAt, cacheHit: true };
 		}
 	}
 
@@ -135,8 +141,9 @@ export async function withCache<T extends object>(
 
 		if (opts.shouldCache && !opts.shouldCache(fresh)) {
 			// Degraded result: prefer the older complete answer if we have one.
-			if (entry) return { ...entry.data, stale: true, cachedAt: entry.storedAt };
-			return { ...fresh, stale: false, cachedAt: null };
+			if (entry)
+				return { ...entry.data, stale: true, cachedAt: entry.storedAt, cacheHit: true };
+			return { ...fresh, stale: false, cachedAt: null, cacheHit: false };
 		}
 
 		const storedAt = now.toISOString();
@@ -147,9 +154,9 @@ export async function withCache<T extends object>(
 				.put(key, JSON.stringify(envelope), { expirationTtl: STALE_RETENTION_SECONDS })
 				.catch(() => {});
 		}
-		return { ...fresh, stale: false, cachedAt: storedAt };
+		return { ...fresh, stale: false, cachedAt: storedAt, cacheHit: false };
 	} catch (err) {
-		if (entry) return { ...entry.data, stale: true, cachedAt: entry.storedAt };
+		if (entry) return { ...entry.data, stale: true, cachedAt: entry.storedAt, cacheHit: true };
 		throw err;
 	}
 }
