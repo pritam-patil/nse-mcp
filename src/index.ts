@@ -68,7 +68,7 @@ function createServer(env: Env, clientIp: string | null) {
 	/** One Analytics Engine event per tool call: tool name + cache hit/miss. */
 	const usage = (tool: string, status: string) => {
 		try {
-			env.USAGE?.writeDataPoint({ blobs: [tool, status], doubles: [1], indexes: [tool] });
+			env.ENGINE?.writeDataPoint({ blobs: [tool, status], doubles: [1], indexes: [tool] });
 		} catch {
 			// Analytics must never fail a request.
 		}

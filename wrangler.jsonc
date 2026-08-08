@@ -18,14 +18,11 @@
 			"id": "91ae66870ba947c79b6ca124227f4a86",
 		},
 	],
-	// Requires one-time enablement of Workers Analytics Engine in the dashboard:
-	// https://dash.cloudflare.com/5252ee9891a8fdede1b1037a8451c6e5/workers/analytics-engine
-	// Until then `wrangler deploy` rejects this binding (code 10089); the Worker
-	// code degrades gracefully when the binding is absent (env.USAGE optional).
+	// One usage event per tool call: blobs [tool, hit|miss|stale|error|rate_limited].
 	"analytics_engine_datasets": [
 		{
-			"binding": "USAGE",
-			"dataset": "nse_mcp_usage",
+			"binding": "ENGINE",
+			"dataset": "analytics",
 		},
 	],
 	"triggers": {
