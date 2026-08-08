@@ -23,7 +23,17 @@ import {
 	formatQuote,
 	formatSymbolMatches,
 } from "./format";
+import { checkRateLimit, rateLimitMessage } from "./rate-limit";
 import { capText, clampLimit, DISCLAIMER, humanizeError, MAX_LIST } from "./tool-helpers";
+
+/** Cache metadata a tool result may carry, for the per-call usage event. */
+type UsageMeta = { stale: boolean; cacheHit?: boolean };
+
+function usageStatus(meta: UsageMeta | null): string {
+	if (!meta) return "none";
+	if (meta.stale) return "stale";
+	return meta.cacheHit ? "hit" : "miss";
+}
 
 const SERVER_INSTRUCTIONS =
 	"Live NSE (National Stock Exchange of India) market data: stock quotes, index " +
@@ -47,13 +57,47 @@ function textResult(text: string) {
 	return { content: [{ type: "text" as const, text: capText(text) }] };
 }
 
-function createServer(env: Env) {
+function createServer(env: Env, clientIp: string | null) {
 	const cache = kvCache(env.CACHE);
 
 	const server = new McpServer(
 		{ name: "nse-data", version: "1.0.0" },
 		{ instructions: SERVER_INSTRUCTIONS },
 	);
+
+	/** One Analytics Engine event per tool call: tool name + cache hit/miss. */
+	const usage = (tool: string, status: string) => {
+		try {
+			env.ENGINE?.writeDataPoint({ blobs: [tool, status], doubles: [1], indexes: [tool] });
+		} catch {
+			// Analytics must never fail a request.
+		}
+	};
+
+	/**
+	 * Wrap a tool handler with the per-IP rate limit and a usage event.
+	 * `run` returns the formatted text plus the result's cache metadata.
+	 */
+	const guarded =
+		<A>(name: string, run: (args: A) => Promise<{ text: string; meta: UsageMeta | null }>) =>
+		async (args: A) => {
+			const rl = await checkRateLimit(cache, clientIp);
+			if (!rl.allowed) {
+				usage(name, "rate_limited");
+				return {
+					isError: true,
+					content: [{ type: "text" as const, text: rateLimitMessage(rl.retryMinutes) }],
+				};
+			}
+			try {
+				const { text, meta } = await run(args);
+				usage(name, usageStatus(meta));
+				return textResult(text);
+			} catch (err) {
+				usage(name, "error");
+				return toolError(err);
+			}
+		};
 
 	server.registerTool(
 		"get_market_status",
@@ -67,13 +111,10 @@ function createServer(env: Env) {
 				DISCLAIMER,
 			inputSchema: z.object({}),
 		},
-		async () => {
-			try {
-				return textResult(formatMarketStatus(await getMarketStatus(cache)));
-			} catch (err) {
-				return toolError(err);
-			}
-		},
+		guarded("get_market_status", async () => {
+			const status = await getMarketStatus(cache);
+			return { text: formatMarketStatus(status), meta: status };
+		}),
 	);
 
 	server.registerTool(
@@ -96,13 +137,10 @@ function createServer(env: Env) {
 					),
 			}),
 		},
-		async ({ symbol }) => {
-			try {
-				return textResult(formatQuote(await getQuote(cache, symbol)));
-			} catch (err) {
-				return toolError(err);
-			}
-		},
+		guarded("get_quote", async ({ symbol }: { symbol: string }) => {
+			const quote = await getQuote(cache, symbol);
+			return { text: formatQuote(quote), meta: quote };
+		}),
 	);
 
 	server.registerTool(
@@ -126,14 +164,14 @@ function createServer(env: Env) {
 					),
 			}),
 		},
-		async ({ query }) => {
-			try {
-				const { matches, updatedAt } = await getSymbolMatches(cache, query, MAX_LIST);
-				return textResult(formatSymbolMatches(matches, query, updatedAt));
-			} catch (err) {
-				return toolError(err);
-			}
-		},
+		guarded("search_symbol", async ({ query }: { query: string }) => {
+			const { matches, updatedAt } = await getSymbolMatches(cache, query, MAX_LIST);
+			// The symbol list lives in KV: a populated list is a cache hit by definition.
+			return {
+				text: formatSymbolMatches(matches, query, updatedAt),
+				meta: { stale: false, cacheHit: updatedAt !== null },
+			};
+		}),
 	);
 
 	server.registerTool(
@@ -163,15 +201,14 @@ function createServer(env: Env) {
 					.describe("How many to return (default 10, max 25)."),
 			}),
 		},
-		async ({ symbol, limit }) => {
-			try {
+		guarded(
+			"get_announcements",
+			async ({ symbol, limit }: { symbol?: string; limit?: number }) => {
 				const n = clampLimit(limit, 10, 25);
 				const result = await getAnnouncements(cache, { symbol, limit: n });
-				return textResult(formatAnnouncements(result, { symbol }));
-			} catch (err) {
-				return toolError(err);
-			}
-		},
+				return { text: formatAnnouncements(result, { symbol }), meta: result };
+			},
+		),
 	);
 
 	server.registerTool(
@@ -196,14 +233,10 @@ function createServer(env: Env) {
 					),
 			}),
 		},
-		async ({ symbol }) => {
-			try {
-				const result = await getCorporateActions(cache, symbol);
-				return textResult(formatCorporateActions(result, { symbol }));
-			} catch (err) {
-				return toolError(err);
-			}
-		},
+		guarded("get_corporate_actions", async ({ symbol }: { symbol?: string }) => {
+			const result = await getCorporateActions(cache, symbol);
+			return { text: formatCorporateActions(result, { symbol }), meta: result };
+		}),
 	);
 
 	server.registerTool(
@@ -237,14 +270,21 @@ function createServer(env: Env) {
 					),
 			}),
 		},
-		async ({ symbol, range, interval }) => {
-			try {
+		guarded(
+			"get_price_history",
+			async ({
+				symbol,
+				range,
+				interval,
+			}: {
+				symbol: string;
+				range?: (typeof KNOWN_RANGES)[number];
+				interval?: (typeof KNOWN_INTERVALS)[number];
+			}) => {
 				const history = await getPriceHistory(cache, symbol, range, interval);
-				return textResult(formatPriceHistory(history));
-			} catch (err) {
-				return toolError(err);
-			}
-		},
+				return { text: formatPriceHistory(history), meta: history };
+			},
+		),
 	);
 
 	server.registerTool(
@@ -260,29 +300,33 @@ function createServer(env: Env) {
 				DISCLAIMER,
 			inputSchema: z.object({}),
 		},
-		async () => {
-			try {
-				return textResult(formatIndices(await getIndices(cache)));
-			} catch (err) {
-				return toolError(err);
-			}
-		},
+		guarded("get_indices", async () => {
+			const result = await getIndices(cache);
+			return { text: formatIndices(result), meta: result };
+		}),
 	);
 
 	return server;
 }
 
+/** Client IP as Cloudflare reports it; null in local dev (rate limit fails open). */
+function clientIpOf(request: Request | undefined): string | null {
+	return request?.headers.get("CF-Connecting-IP") ?? null;
+}
+
 /**
  * The MCP handler ignores the `env` argument it is called with, so `env` has to
  * be captured in the server factory's closure instead. Handlers are memoised
- * per `env` object, which is stable for the lifetime of an isolate.
+ * per `env` object, which is stable for the lifetime of an isolate; the factory
+ * itself runs once per request and receives that request via `ctx.requestInfo`,
+ * which is where the per-request client IP comes from.
  */
 const handlers = new WeakMap<object, ReturnType<typeof createMcpHandler>>();
 
 function handlerFor(env: Env) {
 	let handler = handlers.get(env as object);
 	if (!handler) {
-		handler = createMcpHandler(() => createServer(env));
+		handler = createMcpHandler((ctx) => createServer(env, clientIpOf(ctx?.requestInfo)));
 		handlers.set(env as object, handler);
 	}
 	return handler;
