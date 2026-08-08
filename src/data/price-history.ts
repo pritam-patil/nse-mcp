@@ -10,7 +10,7 @@
 
 import { cacheKey, TTL_HISTORY_SECONDS, withCache, type Cached, type CacheStore } from "./cache";
 import { DataError, fetchJson } from "./http";
-import { normalizeSymbol, toYahooSymbol, YAHOO_CHART_BASE } from "./quotes";
+import { resolveSymbol, YAHOO_CHART_BASE } from "./quotes";
 
 const SOURCE = "yahoo-chart-v8";
 
@@ -275,7 +275,9 @@ export async function fetchHistory(
 }
 
 /**
- * Historical OHLC for a plain NSE symbol, cached for one hour.
+ * Historical OHLC for an NSE stock, or for a supported index alias
+ * (NIFTY / NIFTY 50 → ^NSEI, BANKNIFTY / NIFTY BANK → ^NSEBANK), cached for one
+ * hour.
  *
  * Range/interval default to 1mo/1d and are validated before any request. Pass
  * `store: null` to bypass caching. Throws {@link DataError} (NOT_FOUND for a
@@ -288,8 +290,7 @@ export async function getPriceHistory(
 	intervalInput: string = DEFAULT_INTERVAL,
 	now: Date = new Date(),
 ): Promise<Cached<PriceHistory>> {
-	const display = normalizeSymbol(symbol);
-	const yahoo = toYahooSymbol(display);
+	const { display, yahoo } = resolveSymbol(symbol);
 	const { range, interval } = validateRangeInterval(rangeInput, intervalInput);
 
 	return withCache(

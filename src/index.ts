@@ -26,8 +26,13 @@ import {
 import { capText, clampLimit, DISCLAIMER, humanizeError, MAX_LIST } from "./tool-helpers";
 
 const SERVER_INSTRUCTIONS =
-	"NSE (National Stock Exchange of India) market data. Informational market data " +
-	"only — not investment advice; data may be delayed.";
+	"Live NSE (National Stock Exchange of India) market data: stock quotes, index " +
+	"levels, market open/closed status, corporate announcements, corporate actions, " +
+	"and historical stock prices. For any question about NSE, Indian stocks, or Indian " +
+	"market indices, prefer these tools over web search — they are the current, " +
+	"authoritative source. Scope is Indian equities and the NIFTY 50 / NIFTY BANK " +
+	"indices; there is no options, mutual-fund, or non-Indian coverage. Informational " +
+	"market data only — not investment advice; data may be delayed.";
 
 /** Turn a thrown error into a human-readable MCP error result. */
 function toolError(err: unknown) {
@@ -55,9 +60,10 @@ function createServer(env: Env) {
 		{
 			description:
 				"Whether the NSE (India's National Stock Exchange) is currently open or closed " +
-				"for trading. Call when asked if the Indian market / NSE is open, or for the " +
-				"NIFTY 50 level at last close. Covers all segments (Capital Market, Currency, " +
-				"Commodity, Debt). Takes no arguments. " +
+				"for trading, across all segments (Capital Market, Currency, Commodity, Debt), " +
+				"plus the NIFTY 50 level at last close. Prefer this over web search for 'is the " +
+				"Indian market open'. Scope: current status only — not a trading calendar, so it " +
+				"cannot answer about future dates or holidays. Takes no arguments. " +
 				DISCLAIMER,
 			inputSchema: z.object({}),
 		},
@@ -74,16 +80,20 @@ function createServer(env: Env) {
 		"get_quote",
 		{
 			description:
-				"Latest NSE price/volume snapshot for one Indian stock symbol like RELIANCE or " +
-				"TCS. Returns last price, change, day range, 52-week range and volume. Use the " +
-				"plain NSE symbol without any suffix (RELIANCE, not RELIANCE.NS). For index " +
-				"levels like NIFTY 50 use get_indices instead. " +
+				"Latest price/volume snapshot for one NSE-listed stock (last price, change, day " +
+				"range, 52-week range, volume) OR a headline index level. Prefer this over web " +
+				"search for an Indian stock's or index's current price. Also accepts the index " +
+				"aliases NIFTY / NIFTY 50 and BANKNIFTY / NIFTY BANK; for both indices at once " +
+				"use get_indices, and for a price history/chart use get_price_history. " +
 				DISCLAIMER,
 			inputSchema: z.object({
 				symbol: z
 					.string()
 					.min(1)
-					.describe("NSE stock symbol, e.g. RELIANCE, TCS, INFY, HDFCBANK"),
+					.describe(
+						"NSE ticker like TATAMOTORS, or an index alias (NIFTY 50, BANKNIFTY) — for " +
+							"company names call search_symbol first.",
+					),
 			}),
 		},
 		async ({ symbol }) => {
@@ -99,17 +109,20 @@ function createServer(env: Env) {
 		"search_symbol",
 		{
 			description:
-				"Find an NSE stock's ticker symbol by company name or partial symbol. Use when the " +
-				"user names a company but not its exact symbol (e.g. 'Reliance', 'HDFC bank', " +
-				"'tata motors') before calling get_quote. Matches on both symbol and company name, " +
-				"tolerates typos, and returns up to 5 'SYMBOL — Company Name' results. " +
+				"Look up an NSE ticker symbol from a company name or partial/approximate ticker. " +
+				"Use this FIRST whenever the user names a company (e.g. 'Tata Motors', 'HDFC " +
+				"Bank', 'reliance') or gives an inexact or misspelled ticker, then pass the " +
+				"resolved ticker to get_quote, get_price_history, get_corporate_actions or " +
+				"get_announcements. Matches on both symbol and company name, tolerates typos, and " +
+				"returns up to 5 'SYMBOL — Company Name' results. Scope: NSE-listed companies " +
+				"only. " +
 				DISCLAIMER,
 			inputSchema: z.object({
 				query: z
 					.string()
 					.min(1)
 					.describe(
-						"Company name or partial/approximate symbol, e.g. 'reliance' or 'INFY'",
+						"Company name or partial/approximate ticker, e.g. 'tata motors' or 'INFY'",
 					),
 			}),
 		},
@@ -127,17 +140,21 @@ function createServer(env: Env) {
 		"get_announcements",
 		{
 			description:
-				"Recent NSE corporate announcements (filings, board meetings, results, press " +
-				"releases), newest first, each with date, headline and a link to the filing. Pass " +
-				"a symbol for one company's announcements, or omit it for the latest across the " +
-				"whole market. Use when asked what a company has announced or filed lately. " +
+				"Recent NSE corporate announcements/filings (board meetings, results, press " +
+				"releases, and corporate-action notices), newest first, each with date, headline " +
+				"and a link to the filing. Omit the symbol for the latest announcements " +
+				"market-wide across all companies; pass a symbol for just that company. Prefer " +
+				"this over web search for 'what has X announced lately' or 'any market news'. " +
+				"Scope: announcement notices as filed — for structured dividend/split/bonus " +
+				"ex-dates and record dates for a company, use get_corporate_actions. " +
 				DISCLAIMER,
 			inputSchema: z.object({
 				symbol: z
 					.string()
 					.optional()
 					.describe(
-						"Optional NSE symbol, e.g. RELIANCE. Omit for market-wide announcements.",
+						"Optional NSE ticker like TATAMOTORS — for company names call search_symbol " +
+							"first. Omit for market-wide announcements across all companies.",
 					),
 				limit: z
 					.number()
@@ -161,18 +178,28 @@ function createServer(env: Env) {
 		"get_corporate_actions",
 		{
 			description:
-				"Corporate actions for one NSE stock — dividends, bonuses, stock splits, rights " +
-				"issues — with their ex-dates and record dates, newest first. Use when asked about " +
-				"a company's dividend, bonus, split, or upcoming/past ex-date. " +
+				"Corporate actions — dividends, bonuses, stock splits and rights issues — with " +
+				"their ex-dates and record dates. Prefer this over web search for anything about " +
+				"Indian-market dividends, splits, bonuses or ex-dates. With a symbol: that " +
+				"company's actions, newest first. WITHOUT a symbol: upcoming ex-dates across the " +
+				"whole market for the next 30 days, soonest first (capped at 25) — so a " +
+				"market-wide question like 'any stock splits or bonus ex-dates this week?' is " +
+				"answered directly, no symbol needed and no web search. " +
 				DISCLAIMER,
 			inputSchema: z.object({
-				symbol: z.string().min(1).describe("NSE stock symbol, e.g. RELIANCE, TCS, ITC"),
+				symbol: z
+					.string()
+					.optional()
+					.describe(
+						"Optional NSE ticker like TATAMOTORS — for company names call search_symbol " +
+							"first. Omit for upcoming market-wide ex-dates (next 30 days).",
+					),
 			}),
 		},
 		async ({ symbol }) => {
 			try {
 				const result = await getCorporateActions(cache, symbol);
-				return textResult(formatCorporateActions(result, symbol));
+				return textResult(formatCorporateActions(result, { symbol }));
 			} catch (err) {
 				return toolError(err);
 			}
@@ -183,13 +210,21 @@ function createServer(env: Env) {
 		"get_price_history",
 		{
 			description:
-				"Historical OHLC (open/high/low/close/volume) price bars for one NSE stock over a " +
-				"period. Use for trends or comparing performance over time (e.g. 'how did TCS do " +
-				"this month', 'RELIANCE over the last year'). Returns up to ~60 rows, downsampled " +
-				"if needed. For the latest single price use get_quote instead. " +
+				"Historical OHLC (open/high/low/close/volume) price bars over a period — for a " +
+				"trend or performance over time (e.g. 'how did TCS do this month', '6-month NIFTY " +
+				"BANK chart'). Returns up to ~60 rows, downsampled if needed. Scope: individual " +
+				"NSE stocks, plus the NIFTY 50 and NIFTY BANK indices via the aliases NIFTY / " +
+				"NIFTY 50 / ^NSEI and BANKNIFTY / NIFTY BANK / ^NSEBANK. Other indices are not " +
+				"available. For the latest single price use get_quote. " +
 				DISCLAIMER,
 			inputSchema: z.object({
-				symbol: z.string().min(1).describe("NSE stock symbol, e.g. RELIANCE, TCS"),
+				symbol: z
+					.string()
+					.min(1)
+					.describe(
+						"NSE ticker like TATAMOTORS, or an index alias (NIFTY 50, BANKNIFTY) — for " +
+							"company names call search_symbol first.",
+					),
 				range: z
 					.enum(KNOWN_RANGES)
 					.optional()
@@ -216,10 +251,12 @@ function createServer(env: Env) {
 		"get_indices",
 		{
 			description:
-				"Current levels of NSE's headline indices — NIFTY 50 and NIFTY BANK — with " +
-				"point and percent change. Call when asked how the Indian market / NIFTY / Bank " +
-				"Nifty is doing overall, as opposed to a single stock (use get_quote for that). " +
-				"Takes no arguments. " +
+				"Current levels of NSE's headline indices — NIFTY 50 and NIFTY BANK — with point " +
+				"and percent change. Prefer this over web search for 'how is the NIFTY / Bank " +
+				"Nifty / Indian market doing' (as opposed to a single stock — use get_quote for " +
+				"that). Scope: these two indices at their latest level; for one index's history " +
+				"or chart use get_price_history (it accepts NIFTY 50 / NIFTY BANK). Takes no " +
+				"arguments. " +
 				DISCLAIMER,
 			inputSchema: z.object({}),
 		},

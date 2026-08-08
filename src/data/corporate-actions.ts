@@ -112,28 +112,81 @@ export async function fetchCorporateActions(symbol: string): Promise<CorporateAc
 	return { actions: mapCorporateActions(raw) };
 }
 
+/** Fetch the market-wide corporate-actions feed (all equities) straight from upstream. */
+export async function fetchMarketCorporateActions(): Promise<CorporateActionsResult> {
+	const raw = await fetchJson<unknown>(BASE, {
+		source: SOURCE,
+		headers: {
+			Referer: "https://www.nseindia.com/companies-listing/corporate-filings-actions",
+		},
+	});
+	return { actions: mapCorporateActions(raw) };
+}
+
+/** Window (days) for the market-wide "upcoming ex-dates" view. */
+export const UPCOMING_WINDOW_DAYS = 30;
+
+/** IST calendar date ("YYYY-MM-DD") of an instant, for comparing against exDateIso. */
+function istDateStr(date: Date): string {
+	return new Date(date.getTime() + 330 * 60_000).toISOString().slice(0, 10);
+}
+
 /**
- * Corporate actions for one symbol, cached 15 minutes, newest first.
+ * Keep actions whose ex-date falls within [now, now + days], soonest first.
+ * exDateIso is a plain "YYYY-MM-DD", so lexicographic comparison is calendar order.
+ */
+export function filterUpcoming(
+	actions: CorporateAction[],
+	now: Date,
+	days = UPCOMING_WINDOW_DAYS,
+): CorporateAction[] {
+	const from = istDateStr(now);
+	const to = istDateStr(new Date(now.getTime() + days * 86_400_000));
+	return actions
+		.filter((a) => a.exDateIso !== null && a.exDateIso >= from && a.exDateIso <= to)
+		.sort((a, b) => (a.exDateIso ?? "").localeCompare(b.exDateIso ?? ""));
+}
+
+/**
+ * Corporate actions, cached 15 minutes.
  *
- * An invalid symbol yields an empty result rather than throwing. Pass
- * `store: null` to bypass caching.
+ * With a symbol: that company's dividends/splits/bonuses/rights, newest first.
+ * An invalid symbol yields an empty result rather than throwing.
+ *
+ * Without a symbol: upcoming ex-dates market-wide for the next
+ * {@link UPCOMING_WINDOW_DAYS} days, soonest first, capped at 25. The full
+ * market feed is cached and the upcoming window is applied on read, so the
+ * cache stays valid as "now" advances.
+ *
+ * Pass `store: null` to bypass caching.
  */
 export async function getCorporateActions(
 	store: CacheStore | null,
-	symbol: string,
+	symbol?: string,
 	now: Date = new Date(),
 ): Promise<Cached<CorporateActionsResult>> {
-	let normalized: string;
-	try {
-		normalized = normalizeSymbol(symbol);
-	} catch {
-		return { actions: [], stale: false, cachedAt: null };
+	if (symbol && symbol.trim()) {
+		let normalized: string;
+		try {
+			normalized = normalizeSymbol(symbol);
+		} catch {
+			return { actions: [], stale: false, cachedAt: null };
+		}
+		return withCache(
+			store,
+			cacheKey.corporateActions(normalized),
+			TTL_DEFAULT_SECONDS,
+			() => fetchCorporateActions(normalized),
+			{ now },
+		);
 	}
-	return withCache(
+
+	const market = await withCache(
 		store,
-		cacheKey.corporateActions(normalized),
+		cacheKey.corporateActionsMarket(),
 		TTL_DEFAULT_SECONDS,
-		() => fetchCorporateActions(normalized),
+		fetchMarketCorporateActions,
 		{ now },
 	);
+	return { ...market, actions: filterUpcoming(market.actions, now).slice(0, 25) };
 }

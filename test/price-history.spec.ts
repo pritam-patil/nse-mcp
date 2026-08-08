@@ -185,6 +185,19 @@ describe("getPriceHistory", () => {
 		expect(url).toContain("interval=1d");
 	});
 
+	it("accepts an index alias, querying ^NSEBANK without .NS", async () => {
+		const fn = vi.fn(async (_url: string) => new Response(JSON.stringify(daily)));
+		vi.stubGlobal("fetch", fn);
+		const { store, data } = memoryStore();
+
+		const h = await getPriceHistory(store, "NIFTY BANK", "6mo", "1d");
+		expect(h.symbol).toBe("NIFTY BANK");
+		expect([...data.keys()]).toEqual(["v1:history:NIFTY BANK:6mo:1d"]);
+		const url = fn.mock.calls[0][0];
+		expect(url).toContain("%5ENSEBANK"); // ^NSEBANK, URL-encoded
+		expect(url).not.toContain(".NS");
+	});
+
 	it("defaults to 1mo/1d", async () => {
 		const fn = vi.fn(async () => new Response(JSON.stringify(daily)));
 		vi.stubGlobal("fetch", fn);
